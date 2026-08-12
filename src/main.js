@@ -6,6 +6,10 @@ import { renderAdminPanel } from './admin.js'
 const app = document.querySelector('#app')
 
 let practiceChart = null
+let realtimeChannel = null
+let realtimeTimer = null
+let realtimeSession = null
+let realtimeFullRefresh = false
 
 function destroyChart() {
   if (practiceChart) {
@@ -222,6 +226,118 @@ async function loadDashboardData(session) {
     recentLogs: recentLogsResult.data,
     weekStart
   }
+}
+
+function queueRealtimeRefresh(table) {
+  if (table !== 'practice_logs') {
+    realtimeFullRefresh = true
+  }
+
+  window.clearTimeout(realtimeTimer)
+  realtimeTimer = window.setTimeout(() => {
+    realtimeTimer = null
+    void refreshFromRealtime()
+  }, 300)
+}
+
+async function refreshFromRealtime() {
+  const session = realtimeSession
+  const needsFullRefresh = realtimeFullRefresh
+  realtimeFullRefresh = false
+
+  if (!session) {
+    return
+  }
+
+  try {
+    const data = await loadDashboardData(session)
+
+    if (realtimeSession?.user.id !== session.user.id) {
+      return
+    }
+
+    if (data.pending) {
+      renderPending()
+      return
+    }
+
+    const dashboardIsVisible =
+      document.querySelector('#practiceChart') &&
+      document.querySelector('#feedList')
+
+    if (!dashboardIsVisible || needsFullRefresh) {
+      renderDashboard(session, data)
+      return
+    }
+
+    renderChart(
+      data.members,
+      data.categories,
+      data.weeklyLogs
+    )
+
+    renderFeed(
+      data.recentLogs,
+      data.members,
+      data.categories,
+      data.currentMember,
+      session
+    )
+  } catch (error) {
+    console.error('실시간 갱신 실패:', error)
+  }
+}
+
+function startRealtime(session) {
+  realtimeSession = session
+
+  if (realtimeChannel) {
+    return
+  }
+
+  realtimeChannel = supabase
+    .channel('band-practice-board-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public'
+      },
+      (payload) => {
+        const watchedTables = [
+          'practice_logs',
+          'band_members',
+          'practice_categories'
+        ]
+
+        if (watchedTables.includes(payload.table)) {
+          queueRealtimeRefresh(payload.table)
+        }
+      }
+    )
+    .subscribe((status, error) => {
+      if (
+        status === 'CHANNEL_ERROR' ||
+        status === 'TIMED_OUT'
+      ) {
+        console.error('실시간 연결 실패:', error)
+      }
+    })
+}
+
+async function stopRealtime() {
+  realtimeSession = null
+  realtimeFullRefresh = false
+  window.clearTimeout(realtimeTimer)
+  realtimeTimer = null
+
+  if (!realtimeChannel) {
+    return
+  }
+
+  const channel = realtimeChannel
+  realtimeChannel = null
+  await supabase.removeChannel(channel)
 }
 
 function renderChart(members, categories, logs) {
@@ -701,10 +817,12 @@ function renderDashboard(session, dashboardData) {
 
 async function render(session) {
   if (!session) {
+    await stopRealtime()
     renderSignedOut()
     return
   }
 
+  startRealtime(session)
   renderLoading()
 
   try {
