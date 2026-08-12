@@ -209,6 +209,106 @@ h2 {
   margin-top: 50px;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.list-search-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.recommendation-search-form {
+  grid-template-columns: minmax(0, 1fr) minmax(130px, auto) auto auto;
+}
+
+.list-search-input,
+.list-filter-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 9px 10px;
+  border: 1px solid #ccd5d8;
+  border-radius: 5px;
+  color: #333;
+  background-color: white;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.list-search-input:focus,
+.list-filter-select:focus {
+  border-color: #3498db;
+  outline: 2px solid rgb(52 152 219 / 18%);
+}
+
+.list-search-button,
+.list-clear-button {
+  min-width: 68px;
+  padding: 9px 12px;
+}
+
+.list-clear-button {
+  background-color: #7f8c8d;
+}
+
+.list-clear-button:hover {
+  background-color: #626f70;
+}
+
+.list-result-summary {
+  min-height: 20px;
+  margin: 0 0 14px;
+  color: #7f8c8d;
+  font-size: 0.82rem;
+  text-align: right;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 22px;
+}
+
+.pagination-button {
+  min-width: 40px;
+  padding: 7px 10px;
+  color: #52616b;
+  background-color: #e6ecee;
+  font-size: 0.82rem;
+}
+
+.pagination-button:hover {
+  background-color: #d4dfe2;
+}
+
+.pagination-button.is-current {
+  color: white;
+  background-color: #3498db;
+}
+
+.pagination-button.is-current:hover {
+  background-color: #2980b9;
+}
+
+.pagination-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .log-card {
   position: relative;
   margin-bottom: 15px;
@@ -892,6 +992,25 @@ h2 {
   .week-navigation-button {
     width: 100%;
     min-width: 0;
+  }
+
+  .list-search-form,
+  .recommendation-search-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .list-search-input,
+  .list-filter-select {
+    grid-column: 1 / -1;
+  }
+
+  .list-search-button,
+  .list-clear-button {
+    width: 100%;
+  }
+
+  .list-result-summary {
+    text-align: center;
   }
 
   .admin-grid {

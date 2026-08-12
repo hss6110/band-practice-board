@@ -15,6 +15,10 @@ import {
   showSongRecommendations,
   unmountSongRecommendations
 } from './song-recommendations.js'
+import {
+  createIlikeFilterValue,
+  renderPagination
+} from './list-navigation.js'
 
 const app = document.querySelector('#app')
 
@@ -27,6 +31,10 @@ let realtimeDashboardRefresh = false
 let realtimeSongRefresh = false
 let selectedWeekStart = getCurrentWeekStart()
 let activeView = 'practice'
+const PRACTICE_LOGS_PER_PAGE = 10
+let practiceListPage = 1
+let practiceListSearch = ''
+let practiceListRequestId = 0
 
 function destroyChart() {
   if (practiceChart) {
@@ -101,8 +109,11 @@ function attachLogoutButton() {
 function renderSignedOut() {
   destroyChart()
   unmountSongRecommendations()
+  practiceListRequestId += 1
   selectedWeekStart = getCurrentWeekStart()
   activeView = 'practice'
+  practiceListPage = 1
+  practiceListSearch = ''
 
   app.innerHTML = `
     <main class="login-container">
@@ -122,6 +133,7 @@ function renderSignedOut() {
 function renderLoading() {
   destroyChart()
   unmountSongRecommendations()
+  practiceListRequestId += 1
 
   app.innerHTML = `
     <main class="status-container">
@@ -188,15 +200,141 @@ function getWeeklyLogsQuery(weekStart) {
     .order('practiced_at', { ascending: false })
 }
 
+function getPracticeSearchDateRange(searchValue) {
+  const match = searchValue.match(
+    /^(\d{4})\s*(?:[-./]|년\s*)(\d{1,2})\s*(?:[-./]|월\s*)(\d{1,2})\s*일?$/
+  )
+
+  if (!match) {
+    return null
+  }
+
+  const [, yearValue, monthValue, dayValue] = match
+  const year = Number(yearValue)
+  const month = Number(monthValue)
+  const day = Number(dayValue)
+  const start = new Date(year, month - 1, day)
+
+  if (
+    start.getFullYear() !== year ||
+    start.getMonth() !== month - 1 ||
+    start.getDate() !== day
+  ) {
+    return null
+  }
+
+  const end = new Date(start)
+  end.setDate(end.getDate() + 1)
+
+  return { start, end }
+}
+
+function getPracticeLogsPageQuery(members) {
+  const firstRow =
+    (practiceListPage - 1) * PRACTICE_LOGS_PER_PAGE
+  const lastRow = firstRow + PRACTICE_LOGS_PER_PAGE - 1
+
+  let query = supabase
+    .from('practice_logs')
+    .select(`
+      id,
+      member_id,
+      category_id,
+      minutes,
+      comment,
+      practiced_at,
+      created_at,
+      created_by
+    `, { count: 'exact' })
+
+  if (practiceListSearch) {
+    const dateRange = getPracticeSearchDateRange(
+      practiceListSearch
+    )
+
+    if (dateRange) {
+      query = query
+        .gte('practiced_at', dateRange.start.toISOString())
+        .lt('practiced_at', dateRange.end.toISOString())
+    } else {
+      const ilikeValue = createIlikeFilterValue(
+        practiceListSearch
+      )
+      const normalizedSearch =
+        practiceListSearch.toLocaleLowerCase('ko-KR')
+      const matchingMemberIds = members
+        .filter((member) =>
+          member.display_name
+            .toLocaleLowerCase('ko-KR')
+            .includes(normalizedSearch)
+        )
+        .map((member) => member.id)
+
+      const filters = []
+
+      if (ilikeValue) {
+        filters.push(`comment.ilike.${ilikeValue}`)
+      }
+
+      if (matchingMemberIds.length > 0) {
+        filters.push(
+          `member_id.in.(${matchingMemberIds.join(',')})`
+        )
+      }
+
+      if (filters.length > 0) {
+        query = query.or(filters.join(','))
+      }
+    }
+  }
+
+  return query
+    .order('practiced_at', { ascending: false })
+    .range(firstRow, lastRow)
+}
+
+async function loadPracticeListData(members) {
+  let logsResult = await getPracticeLogsPageQuery(members)
+
+  if (logsResult.error) {
+    throw logsResult.error
+  }
+
+  const totalCount = logsResult.count ?? 0
+  const totalPages = Math.max(
+    1,
+    Math.ceil(totalCount / PRACTICE_LOGS_PER_PAGE)
+  )
+
+  if (practiceListPage > totalPages) {
+    practiceListPage = totalPages
+    logsResult = await getPracticeLogsPageQuery(members)
+
+    if (logsResult.error) {
+      throw logsResult.error
+    }
+  }
+
+  const commentsResult = await loadComments(
+    'practice',
+    logsResult.data.map((log) => log.id)
+  )
+
+  if (commentsResult.error) {
+    throw commentsResult.error
+  }
+
+  return {
+    logs: logsResult.data,
+    comments: commentsResult.data,
+    totalCount
+  }
+}
+
 async function loadDashboardData(session) {
   const weekStart = new Date(selectedWeekStart)
 
-  const [
-    membersResult,
-    categoriesResult,
-    weeklyLogsResult,
-    recentLogsResult
-  ] = await Promise.all([
+  const [membersResult, categoriesResult] = await Promise.all([
     supabase
       .from('band_members')
       .select(`
@@ -221,30 +359,11 @@ async function loadDashboardData(session) {
         sort_order
       `)
       .order('sort_order'),
-
-    getWeeklyLogsQuery(weekStart),
-
-    supabase
-      .from('practice_logs')
-      .select(`
-        id,
-        member_id,
-        category_id,
-        minutes,
-        comment,
-        practiced_at,
-        created_at,
-        created_by
-      `)
-      .order('practiced_at', { ascending: false })
-      .limit(100)
   ])
 
   const error =
     membersResult.error ??
-    categoriesResult.error ??
-    weeklyLogsResult.error ??
-    recentLogsResult.error
+    categoriesResult.error
 
   if (error) {
     throw error
@@ -261,13 +380,14 @@ async function loadDashboardData(session) {
     }
   }
 
-  const practiceCommentsResult = await loadComments(
-    'practice',
-    recentLogsResult.data.map((log) => log.id)
-  )
+  const [weeklyLogsResult, practiceListData] =
+    await Promise.all([
+      getWeeklyLogsQuery(weekStart),
+      loadPracticeListData(members)
+    ])
 
-  if (practiceCommentsResult.error) {
-    throw practiceCommentsResult.error
+  if (weeklyLogsResult.error) {
+    throw weeklyLogsResult.error
   }
 
   return {
@@ -276,8 +396,9 @@ async function loadDashboardData(session) {
     members,
     categories: categoriesResult.data,
     weeklyLogs: weeklyLogsResult.data,
-    recentLogs: recentLogsResult.data,
-    practiceComments: practiceCommentsResult.data,
+    recentLogs: practiceListData.logs,
+    practiceComments: practiceListData.comments,
+    practiceTotalCount: practiceListData.totalCount,
     weekStart
   }
 }
@@ -357,6 +478,13 @@ async function refreshFromRealtime() {
           data.practiceComments,
           data.currentMember,
           session
+        )
+        renderPracticeListControls(
+          data.practiceTotalCount,
+          session,
+          data.members,
+          data.categories,
+          data.currentMember
         )
       }
     }
@@ -693,6 +821,185 @@ async function handleDeletePracticeLog(logId, session) {
   await render(session)
 }
 
+async function refreshPracticeList(
+  session,
+  members,
+  categories,
+  currentMember
+) {
+  const requestId = ++practiceListRequestId
+  const summary = document.querySelector(
+    '#practiceListSummary'
+  )
+
+  if (summary) {
+    summary.textContent = '목록을 불러오고 있습니다.'
+  }
+
+  try {
+    const practiceListData = await loadPracticeListData(members)
+
+    if (
+      requestId !== practiceListRequestId ||
+      realtimeSession?.user.id !== session.user.id
+    ) {
+      return
+    }
+
+    renderFeed(
+      practiceListData.logs,
+      members,
+      categories,
+      practiceListData.comments,
+      currentMember,
+      session
+    )
+    renderPracticeListControls(
+      practiceListData.totalCount,
+      session,
+      members,
+      categories,
+      currentMember
+    )
+  } catch (error) {
+    console.error(error)
+
+    if (requestId !== practiceListRequestId) {
+      return
+    }
+
+    const feedList = document.querySelector('#feedList')
+
+    if (feedList) {
+      feedList.innerHTML = ''
+
+      const errorMessage = document.createElement('p')
+      errorMessage.className = 'empty-message error-message'
+      errorMessage.textContent =
+        '연습 기록을 불러오지 못했습니다.'
+      feedList.append(errorMessage)
+    }
+
+    if (summary) {
+      summary.textContent = ''
+    }
+  }
+}
+
+function renderPracticeListControls(
+  totalCount,
+  session,
+  members,
+  categories,
+  currentMember
+) {
+  const searchInput = document.querySelector(
+    '#practiceSearchInput'
+  )
+  const clearButton = document.querySelector(
+    '#clearPracticeSearchButton'
+  )
+  const summary = document.querySelector(
+    '#practiceListSummary'
+  )
+  const pagination = document.querySelector(
+    '#practicePagination'
+  )
+
+  if (
+    !searchInput ||
+    !clearButton ||
+    !summary ||
+    !pagination
+  ) {
+    return
+  }
+
+  if (document.activeElement !== searchInput) {
+    searchInput.value = practiceListSearch
+  }
+
+  clearButton.hidden = !practiceListSearch
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(totalCount / PRACTICE_LOGS_PER_PAGE)
+  )
+  const countLabel = practiceListSearch
+    ? `검색 결과 ${totalCount}개`
+    : `전체 ${totalCount}개`
+
+  summary.textContent = totalCount > 0
+    ? `${countLabel} · ${practiceListPage}/${totalPages} 페이지`
+    : countLabel
+
+  renderPagination({
+    container: pagination,
+    currentPage: practiceListPage,
+    totalCount,
+    pageSize: PRACTICE_LOGS_PER_PAGE,
+    onPageChange: (page) => {
+      if (page === practiceListPage) {
+        return
+      }
+
+      practiceListPage = page
+      void refreshPracticeList(
+        session,
+        members,
+        categories,
+        currentMember
+      ).then(() => {
+        document
+          .querySelector('#practiceListSection')
+          ?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+          })
+      })
+    }
+  })
+}
+
+function attachPracticeListControls(
+  session,
+  members,
+  categories,
+  currentMember
+) {
+  const form = document.querySelector('#practiceSearchForm')
+  const searchInput = document.querySelector(
+    '#practiceSearchInput'
+  )
+  const clearButton = document.querySelector(
+    '#clearPracticeSearchButton'
+  )
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault()
+    practiceListSearch = searchInput.value.trim()
+    practiceListPage = 1
+    void refreshPracticeList(
+      session,
+      members,
+      categories,
+      currentMember
+    )
+  })
+
+  clearButton.addEventListener('click', () => {
+    searchInput.value = ''
+    practiceListSearch = ''
+    practiceListPage = 1
+    void refreshPracticeList(
+      session,
+      members,
+      categories,
+      currentMember
+    )
+  })
+}
+
 function renderFeed(
   logs,
   members,
@@ -708,8 +1015,9 @@ function renderFeed(
   if (logs.length === 0) {
     const emptyMessage = document.createElement('p')
     emptyMessage.className = 'empty-message'
-    emptyMessage.textContent =
-      '아직 등록된 연습 기록이 없습니다.'
+    emptyMessage.textContent = practiceListSearch
+      ? '검색 조건에 맞는 연습 기록이 없습니다.'
+      : '아직 등록된 연습 기록이 없습니다.'
 
     feedList.append(emptyMessage)
     return
@@ -949,6 +1257,7 @@ function renderDashboard(session, dashboardData) {
     weeklyLogs,
     recentLogs,
     practiceComments,
+    practiceTotalCount,
     weekStart
   } = dashboardData
 
@@ -1097,9 +1406,52 @@ function renderDashboard(session, dashboardData) {
         </form>
         </section>
 
-        <section class="feed">
+        <section id="practiceListSection" class="feed">
           <h2>최근 연습 기록</h2>
+
+          <form
+            id="practiceSearchForm"
+            class="list-search-form"
+            role="search"
+          >
+            <label class="visually-hidden" for="practiceSearchInput">
+              연습 기록 검색
+            </label>
+            <input
+              id="practiceSearchInput"
+              class="list-search-input"
+              type="search"
+              maxlength="100"
+              placeholder="멤버·연습 내용·날짜(2026-08-12)"
+            >
+            <button
+              class="list-search-button"
+              type="submit"
+            >
+              검색
+            </button>
+            <button
+              id="clearPracticeSearchButton"
+              class="list-clear-button"
+              type="button"
+              hidden
+            >
+              초기화
+            </button>
+          </form>
+
+          <p
+            id="practiceListSummary"
+            class="list-result-summary"
+            aria-live="polite"
+          ></p>
           <div id="feedList"></div>
+          <nav
+            id="practicePagination"
+            class="pagination"
+            aria-label="연습 기록 페이지"
+            hidden
+          ></nav>
         </section>
 
         <section
@@ -1131,6 +1483,12 @@ function renderDashboard(session, dashboardData) {
     members
   })
   attachDashboardNavigation()
+  attachPracticeListControls(
+    session,
+    members,
+    categories,
+    currentMember
+  )
 
   updateWeekNavigation(weekStart)
   attachWeekNavigation(members, categories)
@@ -1163,6 +1521,13 @@ function renderDashboard(session, dashboardData) {
     practiceComments,
     currentMember,
     session
+  )
+  renderPracticeListControls(
+    practiceTotalCount,
+    session,
+    members,
+    categories,
+    currentMember
   )
   showDashboardView(activeView)
 }

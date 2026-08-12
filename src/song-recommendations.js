@@ -6,6 +6,10 @@ import {
   groupCommentsByTarget,
   loadComments
 } from './comments.js'
+import {
+  createIlikeFilterValue,
+  renderPagination
+} from './list-navigation.js'
 
 const RECOMMENDATION_STATUSES = [
   { value: 'recommended', label: '추천 중' },
@@ -13,11 +17,16 @@ const RECOMMENDATION_STATUSES = [
   { value: 'confirmed', label: '합주 확정' },
   { value: 'hold', label: '보류' }
 ]
+const RECOMMENDATIONS_PER_PAGE = 10
 
 let boardState = null
 let recommendationsById = new Map()
 let editingRecommendationId = null
 let hasLoadedRecommendations = false
+let recommendationListPage = 1
+let recommendationListSearch = ''
+let recommendationStatusFilter = 'all'
+let recommendationListRequestId = 0
 
 function getStatusLabel(status) {
   return (
@@ -509,6 +518,241 @@ function createRecommendationCard(
   return card
 }
 
+function getRecommendationPageQuery() {
+  const firstRow =
+    (recommendationListPage - 1) * RECOMMENDATIONS_PER_PAGE
+  const lastRow = firstRow + RECOMMENDATIONS_PER_PAGE - 1
+
+  let query = supabase
+    .from('song_recommendations')
+    .select(`
+      id,
+      title,
+      artist,
+      youtube_url,
+      reason,
+      status,
+      created_by,
+      created_at,
+      updated_at
+    `, { count: 'exact' })
+
+  if (recommendationListSearch) {
+    const ilikeValue = createIlikeFilterValue(
+      recommendationListSearch
+    )
+    const normalizedSearch =
+      recommendationListSearch.toLocaleLowerCase('ko-KR')
+    const matchingUserIds = boardState.members
+      .filter((member) =>
+        member.display_name
+          .toLocaleLowerCase('ko-KR')
+          .includes(normalizedSearch)
+      )
+      .map((member) => member.user_id)
+      .filter(Boolean)
+
+    const filters = []
+
+    if (ilikeValue) {
+      filters.push(
+        `title.ilike.${ilikeValue}`,
+        `artist.ilike.${ilikeValue}`
+      )
+    }
+
+    if (matchingUserIds.length > 0) {
+      filters.push(
+        `created_by.in.(${matchingUserIds.join(',')})`
+      )
+    }
+
+    if (filters.length > 0) {
+      query = query.or(filters.join(','))
+    }
+  }
+
+  if (recommendationStatusFilter !== 'all') {
+    query = query.eq('status', recommendationStatusFilter)
+  }
+
+  return query
+    .order('created_at', { ascending: false })
+    .range(firstRow, lastRow)
+}
+
+async function loadRecommendationListData() {
+  let recommendationsResult =
+    await getRecommendationPageQuery()
+
+  if (recommendationsResult.error) {
+    throw recommendationsResult.error
+  }
+
+  const totalCount = recommendationsResult.count ?? 0
+  const totalPages = Math.max(
+    1,
+    Math.ceil(totalCount / RECOMMENDATIONS_PER_PAGE)
+  )
+
+  if (recommendationListPage > totalPages) {
+    recommendationListPage = totalPages
+    recommendationsResult = await getRecommendationPageQuery()
+
+    if (recommendationsResult.error) {
+      throw recommendationsResult.error
+    }
+  }
+
+  const recommendationIds = recommendationsResult.data.map(
+    (recommendation) => recommendation.id
+  )
+
+  const votesPromise = recommendationIds.length > 0
+    ? supabase
+        .from('song_recommendation_votes')
+        .select(`
+          recommendation_id,
+          user_id
+        `)
+        .in('recommendation_id', recommendationIds)
+    : Promise.resolve({ data: [], error: null })
+
+  const [votesResult, commentsResult] = await Promise.all([
+    votesPromise,
+    loadComments('recommendation', recommendationIds)
+  ])
+
+  const error = votesResult.error ?? commentsResult.error
+
+  if (error) {
+    throw error
+  }
+
+  return {
+    recommendations: recommendationsResult.data,
+    votes: votesResult.data,
+    comments: commentsResult.data,
+    totalCount
+  }
+}
+
+function renderRecommendationListControls(totalCount) {
+  const searchInput = document.querySelector(
+    '#recommendationSearchInput'
+  )
+  const statusSelect = document.querySelector(
+    '#recommendationStatusFilter'
+  )
+  const resetButton = document.querySelector(
+    '#resetRecommendationFiltersButton'
+  )
+  const summary = document.querySelector(
+    '#recommendationListSummary'
+  )
+  const pagination = document.querySelector(
+    '#recommendationPagination'
+  )
+
+  if (
+    !searchInput ||
+    !statusSelect ||
+    !resetButton ||
+    !summary ||
+    !pagination
+  ) {
+    return
+  }
+
+  if (document.activeElement !== searchInput) {
+    searchInput.value = recommendationListSearch
+  }
+
+  if (document.activeElement !== statusSelect) {
+    statusSelect.value = recommendationStatusFilter
+  }
+
+  resetButton.hidden =
+    !recommendationListSearch &&
+    recommendationStatusFilter === 'all'
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(totalCount / RECOMMENDATIONS_PER_PAGE)
+  )
+  const hasFilters =
+    recommendationListSearch ||
+    recommendationStatusFilter !== 'all'
+  const countLabel = hasFilters
+    ? `검색 결과 ${totalCount}개`
+    : `전체 ${totalCount}개`
+
+  summary.textContent = totalCount > 0
+    ? `${countLabel} · ${recommendationListPage}/${totalPages} 페이지`
+    : countLabel
+
+  renderPagination({
+    container: pagination,
+    currentPage: recommendationListPage,
+    totalCount,
+    pageSize: RECOMMENDATIONS_PER_PAGE,
+    onPageChange: (page) => {
+      if (page === recommendationListPage) {
+        return
+      }
+
+      recommendationListPage = page
+      void refreshSongRecommendations(true).then(() => {
+        document
+          .querySelector('#recommendationListSection')
+          ?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+          })
+      })
+    }
+  })
+}
+
+function attachRecommendationListControls() {
+  const form = document.querySelector(
+    '#recommendationSearchForm'
+  )
+  const searchInput = document.querySelector(
+    '#recommendationSearchInput'
+  )
+  const statusSelect = document.querySelector(
+    '#recommendationStatusFilter'
+  )
+  const resetButton = document.querySelector(
+    '#resetRecommendationFiltersButton'
+  )
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault()
+    recommendationListSearch = searchInput.value.trim()
+    recommendationStatusFilter = statusSelect.value
+    recommendationListPage = 1
+    void refreshSongRecommendations(true)
+  })
+
+  statusSelect.addEventListener('change', () => {
+    recommendationListSearch = searchInput.value.trim()
+    recommendationStatusFilter = statusSelect.value
+    recommendationListPage = 1
+    void refreshSongRecommendations(true)
+  })
+
+  resetButton.addEventListener('click', () => {
+    searchInput.value = ''
+    statusSelect.value = 'all'
+    recommendationListSearch = ''
+    recommendationStatusFilter = 'all'
+    recommendationListPage = 1
+    void refreshSongRecommendations(true)
+  })
+}
+
 function renderRecommendationList(
   recommendations,
   votes,
@@ -526,8 +770,13 @@ function renderRecommendationList(
   if (recommendations.length === 0) {
     const emptyMessage = document.createElement('p')
     emptyMessage.className = 'empty-message'
-    emptyMessage.textContent =
-      '아직 추천된 곡이 없습니다. 첫 곡을 추천해보세요.'
+    const hasFilters =
+      recommendationListSearch ||
+      recommendationStatusFilter !== 'all'
+
+    emptyMessage.textContent = hasFilters
+      ? '검색 조건에 맞는 추천곡이 없습니다.'
+      : '아직 추천된 곡이 없습니다. 첫 곡을 추천해보세요.'
     list.append(emptyMessage)
     return
   }
@@ -690,8 +939,72 @@ export function mountSongRecommendations({
       </form>
     </section>
 
-    <section class="recommendation-list-section">
+    <section
+      id="recommendationListSection"
+      class="recommendation-list-section"
+    >
       <h2>추천곡 목록</h2>
+
+      <form
+        id="recommendationSearchForm"
+        class="list-search-form recommendation-search-form"
+        role="search"
+      >
+        <label
+          class="visually-hidden"
+          for="recommendationSearchInput"
+        >
+          추천곡 검색
+        </label>
+        <input
+          id="recommendationSearchInput"
+          class="list-search-input"
+          type="search"
+          maxlength="100"
+          placeholder="곡명·아티스트·추천자 검색"
+        >
+
+        <label
+          class="visually-hidden"
+          for="recommendationStatusFilter"
+        >
+          추천 상태
+        </label>
+        <select
+          id="recommendationStatusFilter"
+          class="list-filter-select"
+        >
+          <option value="all">전체 상태</option>
+          ${RECOMMENDATION_STATUSES.map(
+            (status) => `
+              <option value="${status.value}">
+                ${status.label}
+              </option>
+            `
+          ).join('')}
+        </select>
+
+        <button
+          class="list-search-button"
+          type="submit"
+        >
+          검색
+        </button>
+        <button
+          id="resetRecommendationFiltersButton"
+          class="list-clear-button"
+          type="button"
+          hidden
+        >
+          초기화
+        </button>
+      </form>
+
+      <p
+        id="recommendationListSummary"
+        class="list-result-summary"
+        aria-live="polite"
+      ></p>
       <div
         id="recommendationList"
         class="recommendation-list"
@@ -701,6 +1014,12 @@ export function mountSongRecommendations({
           추천곡을 불러오고 있습니다.
         </p>
       </div>
+      <nav
+        id="recommendationPagination"
+        class="pagination"
+        aria-label="추천곡 페이지"
+        hidden
+      ></nav>
     </section>
   `
 
@@ -716,6 +1035,8 @@ export function mountSongRecommendations({
       resetRecommendationForm()
       showRecommendationMessage('')
     })
+
+  attachRecommendationListControls()
 }
 
 export async function showSongRecommendations() {
@@ -731,6 +1052,9 @@ export async function refreshSongRecommendations(
 ) {
   const state = boardState
   const list = document.querySelector('#recommendationList')
+  const summary = document.querySelector(
+    '#recommendationListSummary'
+  )
 
   if (
     !state ||
@@ -748,64 +1072,50 @@ export async function refreshSongRecommendations(
     `
   }
 
-  const [recommendationsResult, votesResult] =
-    await Promise.all([
-      supabase
-        .from('song_recommendations')
-        .select(`
-          id,
-          title,
-          artist,
-          youtube_url,
-          reason,
-          status,
-          created_by,
-          created_at,
-          updated_at
-        `)
-        .order('created_at', { ascending: false })
-        .limit(100),
-
-      supabase
-        .from('song_recommendation_votes')
-        .select(`
-          recommendation_id,
-          user_id
-        `)
-    ])
-
-  const recommendationCommentsResult = await loadComments(
-    'recommendation',
-    recommendationsResult.data?.map(
-      (recommendation) => recommendation.id
-    ) ?? []
-  )
-
-  if (boardState !== state) {
-    return
+  if (summary) {
+    summary.textContent = '목록을 불러오고 있습니다.'
   }
 
-  const error =
-    recommendationsResult.error ??
-    votesResult.error ??
-    recommendationCommentsResult.error
+  const requestId = ++recommendationListRequestId
+  let listData
 
-  if (error) {
+  try {
+    listData = await loadRecommendationListData()
+  } catch (error) {
     console.error(error)
+
+    if (
+      boardState !== state ||
+      requestId !== recommendationListRequestId
+    ) {
+      return
+    }
+
     list.innerHTML = ''
 
     const errorMessage = document.createElement('p')
     errorMessage.className = 'empty-message error-message'
     errorMessage.textContent =
       '추천곡을 불러오지 못했습니다. ' +
-      'Supabase 설정을 확인해주세요.'
+      '잠시 후 다시 시도해주세요.'
     list.append(errorMessage)
+
+    if (summary) {
+      summary.textContent = ''
+    }
+    return
+  }
+
+  if (
+    boardState !== state ||
+    requestId !== recommendationListRequestId
+  ) {
     return
   }
 
   hasLoadedRecommendations = true
   recommendationsById = new Map(
-    recommendationsResult.data.map((recommendation) => [
+    listData.recommendations.map((recommendation) => [
       recommendation.id,
       recommendation
     ])
@@ -820,13 +1130,15 @@ export async function refreshSongRecommendations(
   }
 
   renderRecommendationList(
-    recommendationsResult.data,
-    votesResult.data,
-    recommendationCommentsResult.data
+    listData.recommendations,
+    listData.votes,
+    listData.comments
   )
+  renderRecommendationListControls(listData.totalCount)
 }
 
 export function unmountSongRecommendations() {
+  recommendationListRequestId += 1
   boardState = null
   recommendationsById = new Map()
   editingRecommendationId = null
