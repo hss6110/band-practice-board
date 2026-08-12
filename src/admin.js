@@ -115,32 +115,181 @@ async function updateActiveState(
   await refresh()
 }
 
+async function handleUpdateMember(
+  member,
+  displayNameInput,
+  partInput,
+  saveButton,
+  refresh
+) {
+  const displayName =
+    displayNameInput.value.trim()
+  const part = partInput.value.trim()
+
+  if (!displayName || !part) {
+    alert('멤버 이름과 파트를 모두 입력해주세요.')
+    return
+  }
+
+  const hasNoChanges =
+    displayName === member.display_name &&
+    part === member.part
+
+  if (hasNoChanges) {
+    alert('수정된 내용이 없습니다.')
+    return
+  }
+
+  saveButton.disabled = true
+
+  const { error } = await supabase
+    .from('band_members')
+    .update({
+      display_name: displayName,
+      part
+    })
+    .eq('id', member.id)
+
+  if (error) {
+    console.error(error)
+    alert(`멤버 수정 실패: ${error.message}`)
+    saveButton.disabled = false
+    return
+  }
+
+  await refresh()
+}
+
+async function handleDeleteMember(
+  member,
+  deleteButton,
+  refresh
+) {
+  if (member.user_id) {
+    alert(
+      '계정이 연결된 멤버는 삭제할 수 없습니다. ' +
+      '사용 중지로 변경해주세요.'
+    )
+    return
+  }
+
+  deleteButton.disabled = true
+
+  const {
+    count,
+    error: countError
+  } = await supabase
+    .from('practice_logs')
+    .select(
+      'id',
+      {
+        count: 'exact',
+        head: true
+      }
+    )
+    .eq('member_id', member.id)
+
+  if (countError) {
+    console.error(countError)
+    alert(
+      `멤버 사용 여부 확인 실패: ${countError.message}`
+    )
+    deleteButton.disabled = false
+    return
+  }
+
+  if ((count ?? 0) > 0) {
+    alert(
+      `연습 기록 ${count}개가 연결된 멤버입니다. ` +
+      '삭제할 수 없으므로 사용 중지로 변경해주세요.'
+    )
+    deleteButton.disabled = false
+    return
+  }
+
+  const confirmed = window.confirm(
+    `"${member.display_name}" 멤버를 삭제할까요?`
+  )
+
+  if (!confirmed) {
+    deleteButton.disabled = false
+    return
+  }
+
+  const { error } = await supabase
+    .from('band_members')
+    .delete()
+    .eq('id', member.id)
+
+  if (error) {
+    console.error(error)
+    alert(`멤버 삭제 실패: ${error.message}`)
+    deleteButton.disabled = false
+    return
+  }
+
+  await refresh()
+}
+
 function renderMemberList(
   list,
   members,
   currentMember,
   refresh
 ) {
-  const fragment = document.createDocumentFragment()
+  const fragment =
+    document.createDocumentFragment()
 
   members.forEach((member) => {
     const item = document.createElement('div')
-    item.className = 'admin-item'
+    item.className =
+      'admin-item member-admin-item'
 
-    const info = document.createElement('div')
-    info.className = 'admin-item-info'
+    const content =
+      document.createElement('div')
+    content.className = 'member-edit-content'
 
-    const title = document.createElement('strong')
-    title.textContent =
-      member.display_name === member.part
-        ? member.display_name
-        : `${member.display_name} · ${member.part}`
+    const editor =
+      document.createElement('div')
+    editor.className = 'member-editor'
 
-    const metadata = document.createElement('span')
+    const displayNameInput =
+      document.createElement('input')
+    displayNameInput.className =
+      'member-text-input'
+    displayNameInput.type = 'text'
+    displayNameInput.value =
+      member.display_name
+    displayNameInput.maxLength = 100
+    displayNameInput.setAttribute(
+      'aria-label',
+      '멤버 이름'
+    )
+
+    const partInput =
+      document.createElement('input')
+    partInput.className = 'member-text-input'
+    partInput.type = 'text'
+    partInput.value = member.part
+    partInput.maxLength = 100
+    partInput.setAttribute(
+      'aria-label',
+      '파트'
+    )
+
+    editor.append(
+      displayNameInput,
+      partInput
+    )
+
+    const metadata =
+      document.createElement('span')
     metadata.className = 'admin-item-meta'
 
     const roleLabel =
-      member.role === 'admin' ? '관리자' : '멤버'
+      member.role === 'admin'
+        ? '관리자'
+        : '멤버'
 
     const accountLabel = member.user_id
       ? '계정 연결됨'
@@ -153,7 +302,11 @@ function renderMemberList(
     metadata.textContent =
       `${roleLabel} · ${accountLabel} · ${approvalLabel}`
 
-    info.append(title, metadata)
+    content.append(editor, metadata)
+
+    const actions =
+      document.createElement('div')
+    actions.className = 'member-actions'
 
     const toggleLabel =
       document.createElement('label')
@@ -191,12 +344,169 @@ function renderMemberList(
       })
     }
 
-    toggleLabel.append(checkbox, statusText)
-    item.append(info, toggleLabel)
+    const saveButton =
+      document.createElement('button')
+    saveButton.className =
+      'member-action-button member-save-button'
+    saveButton.type = 'button'
+    saveButton.textContent = '수정 저장'
+
+    saveButton.addEventListener('click', () => {
+      void handleUpdateMember(
+        member,
+        displayNameInput,
+        partInput,
+        saveButton,
+        refresh
+      )
+    })
+
+    const deleteButton =
+      document.createElement('button')
+    deleteButton.className =
+      'member-action-button member-delete-button'
+    deleteButton.type = 'button'
+    deleteButton.textContent = '삭제'
+
+    if (member.user_id || isCurrentMember) {
+      deleteButton.disabled = true
+      deleteButton.title =
+        '계정이 연결된 멤버는 삭제할 수 없습니다.'
+    } else {
+      deleteButton.addEventListener(
+        'click',
+        () => {
+          void handleDeleteMember(
+            member,
+            deleteButton,
+            refresh
+          )
+        }
+      )
+    }
+
+    toggleLabel.append(
+      checkbox,
+      statusText
+    )
+
+    actions.append(
+      toggleLabel,
+      saveButton,
+      deleteButton
+    )
+
+    item.append(content, actions)
     fragment.append(item)
   })
 
   list.replaceChildren(fragment)
+}
+
+async function handleUpdateCategory(
+  category,
+  nameInput,
+  colorInput,
+  saveButton,
+  refresh
+) {
+  const name = nameInput.value.trim()
+  const color = colorInput.value
+
+  if (!name) {
+    alert('카테고리 이름을 입력해주세요.')
+    nameInput.focus()
+    return
+  }
+
+  const hasNoChanges =
+    name === category.name &&
+    color.toLowerCase() ===
+      category.color.toLowerCase()
+
+  if (hasNoChanges) {
+    alert('수정된 내용이 없습니다.')
+    return
+  }
+
+  saveButton.disabled = true
+
+  const { error } = await supabase
+    .from('practice_categories')
+    .update({ name, color })
+    .eq('id', category.id)
+
+  if (error) {
+    console.error(error)
+    alert(`카테고리 수정 실패: ${error.message}`)
+    saveButton.disabled = false
+    return
+  }
+
+  await refresh()
+}
+
+async function handleDeleteCategory(
+  category,
+  deleteButton,
+  refresh
+) {
+  deleteButton.disabled = true
+
+  const {
+    count,
+    error: countError
+  } = await supabase
+    .from('practice_logs')
+    .select(
+      'id',
+      {
+        count: 'exact',
+        head: true
+      }
+    )
+    .eq('category_id', category.id)
+
+  if (countError) {
+    console.error(countError)
+    alert(
+      `카테고리 사용 여부 확인 실패: ${countError.message}`
+    )
+    deleteButton.disabled = false
+    return
+  }
+
+  if ((count ?? 0) > 0) {
+    alert(
+      `연습 기록 ${count}개가 연결된 카테고리입니다. ` +
+      '삭제할 수 없으므로 사용 중지로 변경해주세요.'
+    )
+    deleteButton.disabled = false
+    return
+  }
+
+  const confirmed = window.confirm(
+    `"${category.name}" 카테고리를 삭제할까요?`
+  )
+
+  if (!confirmed) {
+    deleteButton.disabled = false
+    return
+  }
+
+  const { error } = await supabase
+    .from('practice_categories')
+    .delete()
+    .eq('id', category.id)
+
+  if (error) {
+    console.error(error)
+    alert(`카테고리 삭제 실패: ${error.message}`)
+    deleteButton.disabled = false
+    return
+  }
+
+  await refresh()
 }
 
 function renderCategoryList(
@@ -204,23 +514,43 @@ function renderCategoryList(
   categories,
   refresh
 ) {
-  const fragment = document.createDocumentFragment()
+  const fragment =
+    document.createDocumentFragment()
 
   categories.forEach((category) => {
     const item = document.createElement('div')
-    item.className = 'admin-item'
+    item.className =
+      'admin-item category-admin-item'
 
-    const info = document.createElement('div')
-    info.className = 'category-admin-info'
+    const editor = document.createElement('div')
+    editor.className = 'category-editor'
 
-    const color = document.createElement('span')
-    color.className = 'category-color'
-    color.style.backgroundColor = category.color
+    const colorInput =
+      document.createElement('input')
+    colorInput.className = 'category-color-input'
+    colorInput.type = 'color'
+    colorInput.value = category.color
+    colorInput.setAttribute(
+      'aria-label',
+      `${category.name} 표시 색상`
+    )
 
-    const name = document.createElement('strong')
-    name.textContent = category.name
+    const nameInput =
+      document.createElement('input')
+    nameInput.className = 'category-name-input'
+    nameInput.type = 'text'
+    nameInput.value = category.name
+    nameInput.maxLength = 100
+    nameInput.setAttribute(
+      'aria-label',
+      '카테고리 이름'
+    )
 
-    info.append(color, name)
+    editor.append(colorInput, nameInput)
+
+    const actions =
+      document.createElement('div')
+    actions.className = 'category-actions'
 
     const toggleLabel =
       document.createElement('label')
@@ -247,8 +577,45 @@ function renderCategoryList(
       )
     })
 
+    const saveButton =
+      document.createElement('button')
+    saveButton.className =
+      'category-action-button category-save-button'
+    saveButton.type = 'button'
+    saveButton.textContent = '수정 저장'
+    saveButton.addEventListener('click', () => {
+      void handleUpdateCategory(
+        category,
+        nameInput,
+        colorInput,
+        saveButton,
+        refresh
+      )
+    })
+
+    const deleteButton =
+      document.createElement('button')
+    deleteButton.className =
+      'category-action-button category-delete-button'
+    deleteButton.type = 'button'
+    deleteButton.textContent = '삭제'
+    deleteButton.addEventListener('click', () => {
+      void handleDeleteCategory(
+        category,
+        deleteButton,
+        refresh
+      )
+    })
+
     toggleLabel.append(checkbox, statusText)
-    item.append(info, toggleLabel)
+
+    actions.append(
+      toggleLabel,
+      saveButton,
+      deleteButton
+    )
+
+    item.append(editor, actions)
     fragment.append(item)
   })
 

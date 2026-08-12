@@ -316,6 +316,96 @@ h2 {
   border-radius: 50%;
 }
 
+.member-admin-item,
+.category-admin-item {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.member-edit-content {
+  display: grid;
+  gap: 6px;
+}
+
+.member-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.category-editor {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.category-color-input {
+  width: 44px;
+  height: 38px;
+  padding: 2px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  background-color: white;
+  cursor: pointer;
+}
+
+.member-text-input,
+.category-name-input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  color: #333;
+  background-color: white;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.member-actions,
+.category-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.member-actions .status-toggle,
+.category-actions .status-toggle {
+  margin-right: auto;
+}
+
+.member-action-button,
+.category-action-button {
+  padding: 6px 9px;
+  font-size: 0.8rem;
+}
+
+.member-action-button:disabled,
+.category-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.member-save-button,
+.category-save-button {
+  background-color: #27864b;
+}
+
+.member-save-button:hover,
+.category-save-button:hover {
+  background-color: #1f6d3d;
+}
+
+.member-delete-button,
+.category-delete-button {
+  background-color: #e74c3c;
+}
+
+.member-delete-button:hover,
+.category-delete-button:hover {
+  background-color: #c0392b;
+}
+
 .status-toggle {
   display: flex;
   align-items: center;
@@ -376,5 +466,24 @@ h2 {
   .admin-item {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .member-admin-item,
+  .category-admin-item,
+  .member-edit-content,
+  .member-editor,
+  .member-actions,
+  .category-editor,
+  .category-actions {
+    width: 100%;
+  }
+
+  .member-actions,
+  .category-actions {
+    flex-wrap: wrap;
+  }
+
+  .member-editor {
+    grid-template-columns: 1fr;
   }
 }
