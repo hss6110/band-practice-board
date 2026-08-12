@@ -3,6 +3,13 @@ import Chart from 'chart.js/auto'
 import { supabase } from './supabase.js'
 import { renderAdminPanel } from './admin.js'
 import {
+  captureCommentDrafts,
+  createCommentsSection,
+  getCommentDraftKey,
+  groupCommentsByTarget,
+  loadComments
+} from './comments.js'
+import {
   mountSongRecommendations,
   refreshSongRecommendations,
   showSongRecommendations,
@@ -254,6 +261,15 @@ async function loadDashboardData(session) {
     }
   }
 
+  const practiceCommentsResult = await loadComments(
+    'practice',
+    recentLogsResult.data.map((log) => log.id)
+  )
+
+  if (practiceCommentsResult.error) {
+    throw practiceCommentsResult.error
+  }
+
   return {
     pending: false,
     currentMember,
@@ -261,6 +277,7 @@ async function loadDashboardData(session) {
     categories: categoriesResult.data,
     weeklyLogs: weeklyLogsResult.data,
     recentLogs: recentLogsResult.data,
+    practiceComments: practiceCommentsResult.data,
     weekStart
   }
 }
@@ -268,7 +285,13 @@ async function loadDashboardData(session) {
 function queueRealtimeRefresh(table) {
   const isSongBoardTable = [
     'song_recommendations',
-    'song_recommendation_votes'
+    'song_recommendation_votes',
+    'song_recommendation_comments'
+  ].includes(table)
+
+  const isPartialDashboardTable = [
+    'practice_logs',
+    'practice_log_comments'
   ].includes(table)
 
   if (isSongBoardTable) {
@@ -276,7 +299,7 @@ function queueRealtimeRefresh(table) {
   } else {
     realtimeDashboardRefresh = true
 
-    if (table !== 'practice_logs') {
+    if (!isPartialDashboardTable) {
       realtimeFullRefresh = true
     }
   }
@@ -331,6 +354,7 @@ async function refreshFromRealtime() {
           data.recentLogs,
           data.members,
           data.categories,
+          data.practiceComments,
           data.currentMember,
           session
         )
@@ -369,7 +393,9 @@ function startRealtime(session) {
           'band_members',
           'practice_categories',
           'song_recommendations',
-          'song_recommendation_votes'
+          'song_recommendation_votes',
+          'practice_log_comments',
+          'song_recommendation_comments'
         ]
 
         if (watchedTables.includes(payload.table)) {
@@ -671,10 +697,12 @@ function renderFeed(
   logs,
   members,
   categories,
+  comments,
   currentMember,
   session
 ) {
   const feedList = document.querySelector('#feedList')
+  const commentDrafts = captureCommentDrafts(feedList)
   feedList.replaceChildren()
 
   if (logs.length === 0) {
@@ -693,6 +721,17 @@ function renderFeed(
 
   const categoriesById = new Map(
     categories.map((category) => [category.id, category])
+  )
+
+  const membersByUserId = new Map(
+    members
+      .filter((member) => member.user_id)
+      .map((member) => [member.user_id, member])
+  )
+
+  const commentsByLogId = groupCommentsByTarget(
+    comments,
+    'practice_log_id'
   )
 
   const fragment = document.createDocumentFragment()
@@ -742,7 +781,20 @@ function renderFeed(
       header.append(deleteButton)
     }
 
-    card.append(header, comment)
+    const commentsSection = createCommentsSection({
+      targetType: 'practice',
+      targetId: log.id,
+      comments: commentsByLogId.get(log.id) ?? [],
+      membersByUserId,
+      currentUserId: session.user.id,
+      isAdmin: currentMember.role === 'admin',
+      initialDraft:
+        commentDrafts.get(
+          getCommentDraftKey('practice', log.id)
+        ) ?? ''
+    })
+
+    card.append(header, comment, commentsSection)
     fragment.append(card)
   })
 
@@ -896,6 +948,7 @@ function renderDashboard(session, dashboardData) {
     categories,
     weeklyLogs,
     recentLogs,
+    practiceComments,
     weekStart
   } = dashboardData
 
@@ -1107,6 +1160,7 @@ function renderDashboard(session, dashboardData) {
     recentLogs,
     members,
     categories,
+    practiceComments,
     currentMember,
     session
   )

@@ -722,6 +722,121 @@ h2 {
   background-color: #c0392b;
 }
 
+.comments-section {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e7e9;
+}
+
+.comments-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 9px;
+}
+
+.comments-title {
+  color: #52616b;
+  font-size: 0.85rem;
+}
+
+.comments-list {
+  display: grid;
+  gap: 8px;
+}
+
+.comments-empty-message {
+  margin: 0;
+  color: #95a5a6;
+  font-size: 0.82rem;
+}
+
+.comment-item {
+  padding: 9px 11px;
+  border-radius: 5px;
+  background-color: white;
+}
+
+.comment-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.comment-meta {
+  color: #7f8c8d;
+  font-size: 0.75rem;
+}
+
+.comment-delete-button {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  color: #c0392b;
+  background-color: transparent;
+  font-size: 0.72rem;
+}
+
+.comment-delete-button:hover {
+  color: white;
+  background-color: #c0392b;
+}
+
+.comment-delete-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.comment-content {
+  margin: 5px 0 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.comment-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.comment-input {
+  width: 100%;
+  min-height: 54px;
+  padding: 8px 10px;
+  border: 1px solid #d7dfe2;
+  border-radius: 5px;
+  color: #333;
+  background-color: white;
+  font-family: inherit;
+  font-size: 0.85rem;
+  resize: vertical;
+}
+
+.comment-input:focus {
+  border-color: #3498db;
+  outline: 2px solid rgb(52 152 219 / 18%);
+}
+
+.comment-submit-button {
+  min-width: 68px;
+  padding: 8px 12px;
+}
+
+.comment-submit-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.comment-form-message {
+  min-height: 18px;
+  margin: 5px 0 0;
+  color: #27864b;
+  font-size: 0.75rem;
+}
+
 @media (max-width: 600px) {
   #app {
     padding: 10px;
@@ -840,5 +955,13 @@ h2 {
     width: 100%;
     justify-content: center;
     text-align: center;
+  }
+
+  .comment-form {
+    grid-template-columns: 1fr;
+  }
+
+  .comment-submit-button {
+    width: 100%;
   }
 }

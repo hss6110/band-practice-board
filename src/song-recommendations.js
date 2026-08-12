@@ -1,4 +1,11 @@
 import { supabase } from './supabase.js'
+import {
+  captureCommentDrafts,
+  createCommentsSection,
+  getCommentDraftKey,
+  groupCommentsByTarget,
+  loadComments
+} from './comments.js'
 
 const RECOMMENDATION_STATUSES = [
   { value: 'recommended', label: '추천 중' },
@@ -314,7 +321,9 @@ async function handleRecommendationStatusChange(
 function createRecommendationCard(
   recommendation,
   votes,
-  membersByUserId
+  comments,
+  membersByUserId,
+  initialCommentDraft
 ) {
   const state = boardState
   const card = document.createElement('article')
@@ -461,17 +470,38 @@ function createRecommendationCard(
     footer.append(managementActions)
   }
 
-  card.append(cardHeader, reason, meta, footer)
+  const commentsSection = createCommentsSection({
+    targetType: 'recommendation',
+    targetId: recommendation.id,
+    comments,
+    membersByUserId,
+    currentUserId: state.session.user.id,
+    isAdmin: state.currentMember.role === 'admin',
+    initialDraft: initialCommentDraft
+  })
+
+  card.append(
+    cardHeader,
+    reason,
+    meta,
+    footer,
+    commentsSection
+  )
   return card
 }
 
-function renderRecommendationList(recommendations, votes) {
+function renderRecommendationList(
+  recommendations,
+  votes,
+  comments
+) {
   const list = document.querySelector('#recommendationList')
 
   if (!list || !boardState) {
     return
   }
 
+  const commentDrafts = captureCommentDrafts(list)
   list.replaceChildren()
 
   if (recommendations.length === 0) {
@@ -489,6 +519,12 @@ function renderRecommendationList(recommendations, votes) {
       .map((member) => [member.user_id, member])
   )
 
+  const commentsByRecommendationId =
+    groupCommentsByTarget(
+      comments,
+      'recommendation_id'
+    )
+
   const fragment = document.createDocumentFragment()
 
   recommendations.forEach((recommendation) => {
@@ -496,7 +532,16 @@ function renderRecommendationList(recommendations, votes) {
       createRecommendationCard(
         recommendation,
         votes,
-        membersByUserId
+        commentsByRecommendationId.get(
+          recommendation.id
+        ) ?? [],
+        membersByUserId,
+        commentDrafts.get(
+          getCommentDraftKey(
+            'recommendation',
+            recommendation.id
+          )
+        ) ?? ''
       )
     )
   })
@@ -710,12 +755,21 @@ export async function refreshSongRecommendations(
         `)
     ])
 
+  const recommendationCommentsResult = await loadComments(
+    'recommendation',
+    recommendationsResult.data?.map(
+      (recommendation) => recommendation.id
+    ) ?? []
+  )
+
   if (boardState !== state) {
     return
   }
 
   const error =
-    recommendationsResult.error ?? votesResult.error
+    recommendationsResult.error ??
+    votesResult.error ??
+    recommendationCommentsResult.error
 
   if (error) {
     console.error(error)
@@ -748,7 +802,8 @@ export async function refreshSongRecommendations(
 
   renderRecommendationList(
     recommendationsResult.data,
-    votesResult.data
+    votesResult.data,
+    recommendationCommentsResult.data
   )
 }
 
