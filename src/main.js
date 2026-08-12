@@ -1,6 +1,7 @@
 import './style.css'
 import Chart from 'chart.js/auto'
 import { supabase } from './supabase.js'
+import { renderAdminPanel } from './admin.js'
 
 const app = document.querySelector('#app')
 
@@ -644,10 +645,16 @@ function renderDashboard(session, dashboardData) {
           ></p>
         </form>
       </section>
-      <section class="feed">
+       <section class="feed">
         <h2>최근 연습 기록</h2>
         <div id="feedList"></div>
       </section>
+
+      <section
+        id="adminPanel"
+        class="admin-section"
+        hidden
+      ></section>
     </main>
   `
 
@@ -673,6 +680,13 @@ function renderDashboard(session, dashboardData) {
     .addEventListener('submit', (event) => {
       void handlePracticeSubmit(event, session)
     })
+
+  renderAdminPanel({
+    currentMember,
+    members,
+    categories,
+    refresh: () => render(session)
+  })
 
   attachLogoutButton()
   renderChart(members, categories, weeklyLogs)
