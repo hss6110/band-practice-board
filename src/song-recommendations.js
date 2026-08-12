@@ -389,6 +389,20 @@ function createRecommendationCard(
     (vote) => vote.user_id === state.session.user.id
   )
 
+  const voterNames = recommendationVotes
+    .map(
+      (vote) =>
+        membersByUserId.get(vote.user_id)?.display_name ??
+        '이름 미등록 멤버'
+    )
+    .sort((firstName, secondName) =>
+      firstName.localeCompare(secondName, 'ko')
+    )
+
+  const voterNamesText = voterNames.length > 0
+    ? `투표한 멤버: ${voterNames.join(', ')}`
+    : '아직 투표한 멤버가 없습니다.'
+
   const voteButton = document.createElement('button')
   voteButton.className = 'recommendation-vote-button'
   voteButton.classList.toggle('is-voted', hasMyVote)
@@ -396,6 +410,11 @@ function createRecommendationCard(
   voteButton.textContent =
     `${hasMyVote ? '✓ ' : ''}합주해 보고 싶어요 ` +
     `${recommendationVotes.length}명`
+  voteButton.title = voterNamesText
+  voteButton.setAttribute(
+    'aria-label',
+    `${voteButton.textContent}. ${voterNamesText}`
+  )
   voteButton.addEventListener('click', () => {
     void handleRecommendationVote(
       recommendation,
