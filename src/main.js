@@ -2,6 +2,12 @@ import './style.css'
 import Chart from 'chart.js/auto'
 import { supabase } from './supabase.js'
 import { renderAdminPanel } from './admin.js'
+import {
+  mountSongRecommendations,
+  refreshSongRecommendations,
+  showSongRecommendations,
+  unmountSongRecommendations
+} from './song-recommendations.js'
 
 const app = document.querySelector('#app')
 
@@ -10,7 +16,10 @@ let realtimeChannel = null
 let realtimeTimer = null
 let realtimeSession = null
 let realtimeFullRefresh = false
+let realtimeDashboardRefresh = false
+let realtimeSongRefresh = false
 let selectedWeekStart = getCurrentWeekStart()
+let activeView = 'practice'
 
 function destroyChart() {
   if (practiceChart) {
@@ -84,7 +93,9 @@ function attachLogoutButton() {
 
 function renderSignedOut() {
   destroyChart()
+  unmountSongRecommendations()
   selectedWeekStart = getCurrentWeekStart()
+  activeView = 'practice'
 
   app.innerHTML = `
     <main class="login-container">
@@ -103,6 +114,7 @@ function renderSignedOut() {
 
 function renderLoading() {
   destroyChart()
+  unmountSongRecommendations()
 
   app.innerHTML = `
     <main class="status-container">
@@ -114,6 +126,7 @@ function renderLoading() {
 
 function renderPending() {
   destroyChart()
+  unmountSongRecommendations()
 
   app.innerHTML = `
     <main class="status-container">
@@ -131,6 +144,7 @@ function renderPending() {
 
 function renderError(message) {
   destroyChart()
+  unmountSongRecommendations()
 
   app.innerHTML = `
     <main class="status-container">
@@ -252,8 +266,19 @@ async function loadDashboardData(session) {
 }
 
 function queueRealtimeRefresh(table) {
-  if (table !== 'practice_logs') {
-    realtimeFullRefresh = true
+  const isSongBoardTable = [
+    'song_recommendations',
+    'song_recommendation_votes'
+  ].includes(table)
+
+  if (isSongBoardTable) {
+    realtimeSongRefresh = true
+  } else {
+    realtimeDashboardRefresh = true
+
+    if (table !== 'practice_logs') {
+      realtimeFullRefresh = true
+    }
   }
 
   window.clearTimeout(realtimeTimer)
@@ -266,46 +291,58 @@ function queueRealtimeRefresh(table) {
 async function refreshFromRealtime() {
   const session = realtimeSession
   const needsFullRefresh = realtimeFullRefresh
+  const needsDashboardRefresh = realtimeDashboardRefresh
+  const needsSongRefresh = realtimeSongRefresh
   realtimeFullRefresh = false
+  realtimeDashboardRefresh = false
+  realtimeSongRefresh = false
 
   if (!session) {
     return
   }
 
   try {
-    const data = await loadDashboardData(session)
+    if (needsDashboardRefresh) {
+      const data = await loadDashboardData(session)
 
-    if (realtimeSession?.user.id !== session.user.id) {
-      return
+      if (realtimeSession?.user.id !== session.user.id) {
+        return
+      }
+
+      if (data.pending) {
+        renderPending()
+        return
+      }
+
+      const dashboardIsVisible =
+        document.querySelector('#practiceChart') &&
+        document.querySelector('#feedList')
+
+      if (!dashboardIsVisible || needsFullRefresh) {
+        renderDashboard(session, data)
+      } else {
+        renderChart(
+          data.members,
+          data.categories,
+          data.weeklyLogs
+        )
+
+        renderFeed(
+          data.recentLogs,
+          data.members,
+          data.categories,
+          data.currentMember,
+          session
+        )
+      }
     }
 
-    if (data.pending) {
-      renderPending()
-      return
+    if (
+      needsSongRefresh &&
+      realtimeSession?.user.id === session.user.id
+    ) {
+      await refreshSongRecommendations()
     }
-
-    const dashboardIsVisible =
-      document.querySelector('#practiceChart') &&
-      document.querySelector('#feedList')
-
-    if (!dashboardIsVisible || needsFullRefresh) {
-      renderDashboard(session, data)
-      return
-    }
-
-    renderChart(
-      data.members,
-      data.categories,
-      data.weeklyLogs
-    )
-
-    renderFeed(
-      data.recentLogs,
-      data.members,
-      data.categories,
-      data.currentMember,
-      session
-    )
   } catch (error) {
     console.error('실시간 갱신 실패:', error)
   }
@@ -330,7 +367,9 @@ function startRealtime(session) {
         const watchedTables = [
           'practice_logs',
           'band_members',
-          'practice_categories'
+          'practice_categories',
+          'song_recommendations',
+          'song_recommendation_votes'
         ]
 
         if (watchedTables.includes(payload.table)) {
@@ -351,8 +390,11 @@ function startRealtime(session) {
 async function stopRealtime() {
   realtimeSession = null
   realtimeFullRefresh = false
+  realtimeDashboardRefresh = false
+  realtimeSongRefresh = false
   window.clearTimeout(realtimeTimer)
   realtimeTimer = null
+  unmountSongRecommendations()
 
   if (!realtimeChannel) {
     return
@@ -361,6 +403,79 @@ async function stopRealtime() {
   const channel = realtimeChannel
   realtimeChannel = null
   await supabase.removeChannel(channel)
+}
+
+function showDashboardView(view) {
+  activeView = view
+
+  const showingSongRecommendations =
+    view === 'recommendations'
+
+  const practiceView = document.querySelector(
+    '#practiceView'
+  )
+  const recommendationsView = document.querySelector(
+    '#songRecommendationsView'
+  )
+  const practiceTab = document.querySelector(
+    '#practiceTabButton'
+  )
+  const recommendationsTab = document.querySelector(
+    '#recommendationsTabButton'
+  )
+
+  if (
+    !practiceView ||
+    !recommendationsView ||
+    !practiceTab ||
+    !recommendationsTab
+  ) {
+    return
+  }
+
+  practiceView.hidden = showingSongRecommendations
+  recommendationsView.hidden = !showingSongRecommendations
+
+  practiceTab.classList.toggle(
+    'is-active',
+    !showingSongRecommendations
+  )
+  practiceTab.setAttribute(
+    'aria-selected',
+    String(!showingSongRecommendations)
+  )
+
+  recommendationsTab.classList.toggle(
+    'is-active',
+    showingSongRecommendations
+  )
+  recommendationsTab.setAttribute(
+    'aria-selected',
+    String(showingSongRecommendations)
+  )
+
+  if (showingSongRecommendations) {
+    void showSongRecommendations()
+    return
+  }
+
+  window.requestAnimationFrame(() => {
+    practiceChart?.resize()
+  })
+}
+
+function attachDashboardNavigation() {
+  document
+    .querySelector('#practiceTabButton')
+    .addEventListener('click', () => {
+      showDashboardView('practice')
+    })
+
+  document
+    .querySelector('#recommendationsTabButton')
+    .addEventListener('click', () => {
+      showDashboardView('recommendations')
+    })
 }
 
 function renderChart(members, categories, logs) {
@@ -804,7 +919,28 @@ function renderDashboard(session, dashboardData) {
         </button>
       </header>
 
-      <section class="chart-section">
+      <nav class="view-tabs" aria-label="주요 메뉴">
+        <button
+          id="practiceTabButton"
+          class="view-tab-button is-active"
+          type="button"
+          aria-selected="true"
+        >
+          연습 기록
+        </button>
+
+        <button
+          id="recommendationsTabButton"
+          class="view-tab-button"
+          type="button"
+          aria-selected="false"
+        >
+          곡 추천
+        </button>
+      </nav>
+
+      <div id="practiceView" class="view-panel">
+        <section class="chart-section">
         <h2 id="chartTitle"></h2>
 
         <div class="week-navigation">
@@ -844,8 +980,9 @@ function renderDashboard(session, dashboardData) {
         <div class="chart-container">
           <canvas id="practiceChart"></canvas>
         </div>
-      </section>
- <section class="form-section">
+        </section>
+
+        <section class="form-section">
         <h2>새 연습 기록하기</h2>
 
         <form id="practiceForm">
@@ -905,15 +1042,23 @@ function renderDashboard(session, dashboardData) {
             aria-live="polite"
           ></p>
         </form>
-      </section>
-       <section class="feed">
-        <h2>최근 연습 기록</h2>
-        <div id="feedList"></div>
-      </section>
+        </section>
+
+        <section class="feed">
+          <h2>최근 연습 기록</h2>
+          <div id="feedList"></div>
+        </section>
+
+        <section
+          id="adminPanel"
+          class="admin-section"
+          hidden
+        ></section>
+      </div>
 
       <section
-        id="adminPanel"
-        class="admin-section"
+        id="songRecommendationsView"
+        class="view-panel"
         hidden
       ></section>
     </main>
@@ -926,6 +1071,13 @@ function renderDashboard(session, dashboardData) {
     currentMember.role === 'admin'
       ? '관리자'
       : '밴드원'
+
+  mountSongRecommendations({
+    session,
+    currentMember,
+    members
+  })
+  attachDashboardNavigation()
 
   updateWeekNavigation(weekStart)
   attachWeekNavigation(members, categories)
@@ -958,6 +1110,7 @@ function renderDashboard(session, dashboardData) {
     currentMember,
     session
   )
+  showDashboardView(activeView)
 }
 
 async function render(session) {

@@ -466,6 +466,262 @@ h2 {
   cursor: not-allowed;
 }
 
+.view-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 28px;
+  padding: 4px;
+  border-radius: 8px;
+  background-color: #edf1f2;
+}
+
+.view-tab-button {
+  border-radius: 6px;
+  color: #52616b;
+  background-color: transparent;
+}
+
+.view-tab-button:hover {
+  color: #2c3e50;
+  background-color: #dfe6e8;
+}
+
+.view-tab-button.is-active {
+  color: white;
+  background-color: #3498db;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 12%);
+}
+
+.view-tab-button.is-active:hover {
+  background-color: #2980b9;
+}
+
+.recommendation-intro {
+  margin-top: 40px;
+  text-align: center;
+}
+
+.recommendation-intro h2 {
+  margin-bottom: 8px;
+}
+
+.recommendation-intro p {
+  margin: 0;
+  color: #7f8c8d;
+  line-height: 1.6;
+}
+
+.recommendation-form-section,
+.recommendation-list-section {
+  margin-top: 42px;
+}
+
+.recommendation-form {
+  padding: 20px;
+  border: 1px solid #e2e7e9;
+  border-radius: 8px;
+  background-color: #fafcfc;
+}
+
+.recommendation-form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+}
+
+.recommendation-form-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.cancel-edit-button {
+  background-color: #7f8c8d;
+}
+
+.cancel-edit-button:hover {
+  background-color: #626f70;
+}
+
+.recommendation-list {
+  display: grid;
+  gap: 16px;
+}
+
+.recommendation-card {
+  padding: 18px;
+  border: 1px solid #e2e7e9;
+  border-left: 5px solid #3498db;
+  border-radius: 6px;
+  background-color: #fafafa;
+}
+
+.recommendation-card.status-candidate {
+  border-left-color: #f39c12;
+}
+
+.recommendation-card.status-confirmed {
+  border-left-color: #27864b;
+}
+
+.recommendation-card.status-hold {
+  border-left-color: #95a5a6;
+}
+
+.recommendation-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.recommendation-title-group {
+  min-width: 0;
+}
+
+.recommendation-title-group h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.1rem;
+  overflow-wrap: anywhere;
+}
+
+.recommendation-artist {
+  margin: 5px 0 0;
+  color: #7f8c8d;
+  overflow-wrap: anywhere;
+}
+
+.recommendation-status-badge {
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  border-radius: 12px;
+  color: white;
+  background-color: #3498db;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.status-candidate .recommendation-status-badge {
+  background-color: #f39c12;
+}
+
+.status-confirmed .recommendation-status-badge {
+  background-color: #27864b;
+}
+
+.status-hold .recommendation-status-badge {
+  background-color: #95a5a6;
+}
+
+.recommendation-reason {
+  margin: 16px 0 10px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.recommendation-meta {
+  margin: 0;
+  color: #7f8c8d;
+  font-size: 0.8rem;
+}
+
+.recommendation-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e7e9;
+}
+
+.recommendation-primary-actions,
+.recommendation-management-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.youtube-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 11px;
+  border-radius: 5px;
+  color: white;
+  background-color: #c0392b;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.youtube-link:hover {
+  background-color: #a93226;
+}
+
+.recommendation-vote-button,
+.recommendation-management-button {
+  padding: 7px 11px;
+  font-size: 0.8rem;
+}
+
+.recommendation-vote-button {
+  color: #2c3e50;
+  background-color: #e6ecee;
+}
+
+.recommendation-vote-button:hover {
+  background-color: #d4dfe2;
+}
+
+.recommendation-vote-button.is-voted {
+  color: white;
+  background-color: #8e44ad;
+}
+
+.recommendation-vote-button.is-voted:hover {
+  background-color: #76398f;
+}
+
+.recommendation-vote-button:disabled,
+.recommendation-management-button:disabled,
+.recommendation-status-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.recommendation-status-select {
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid #ccd5d8;
+  border-radius: 5px;
+  color: #333;
+  background-color: white;
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+
+.edit-recommendation-button {
+  background-color: #27864b;
+}
+
+.edit-recommendation-button:hover {
+  background-color: #1f6d3d;
+}
+
+.delete-recommendation-button {
+  background-color: #e74c3c;
+}
+
+.delete-recommendation-button:hover {
+  background-color: #c0392b;
+}
+
 @media (max-width: 600px) {
   #app {
     padding: 10px;
@@ -549,5 +805,40 @@ h2 {
 
   .member-editor {
     grid-template-columns: 1fr;
+  }
+
+  .recommendation-form {
+    padding: 15px;
+  }
+
+  .recommendation-form-row,
+  .recommendation-form-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .recommendation-card-header,
+  .recommendation-card-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .recommendation-status-badge {
+    align-self: flex-start;
+  }
+
+  .recommendation-primary-actions,
+  .recommendation-management-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .youtube-link,
+  .recommendation-primary-actions button,
+  .recommendation-management-actions button,
+  .recommendation-status-select {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
   }
 }

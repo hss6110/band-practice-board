@@ -1,0 +1,760 @@
+import { supabase } from './supabase.js'
+
+const RECOMMENDATION_STATUSES = [
+  { value: 'recommended', label: '추천 중' },
+  { value: 'candidate', label: '합주 후보' },
+  { value: 'confirmed', label: '합주 확정' },
+  { value: 'hold', label: '보류' }
+]
+
+let boardState = null
+let recommendationsById = new Map()
+let editingRecommendationId = null
+let hasLoadedRecommendations = false
+
+function getStatusLabel(status) {
+  return (
+    RECOMMENDATION_STATUSES.find(
+      (option) => option.value === status
+    )?.label ?? '추천 중'
+  )
+}
+
+function formatRecommendationDate(dateValue) {
+  return new Intl.DateTimeFormat('ko-KR', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(new Date(dateValue))
+}
+
+function normalizeYouTubeUrl(value) {
+  const trimmedValue = value.trim()
+  const urlValue = /^[a-z][a-z\d+.-]*:\/\//i.test(trimmedValue)
+    ? trimmedValue
+    : `https://${trimmedValue}`
+
+  let url
+
+  try {
+    url = new URL(urlValue)
+  } catch {
+    throw new Error('올바른 YouTube 주소를 입력해주세요.')
+  }
+
+  const hostname = url.hostname
+    .toLowerCase()
+    .replace(/^www\./, '')
+
+  const isYouTubeHost =
+    hostname === 'youtu.be' ||
+    hostname === 'youtube.com' ||
+    hostname.endsWith('.youtube.com')
+
+  if (
+    !['http:', 'https:'].includes(url.protocol) ||
+    !isYouTubeHost
+  ) {
+    throw new Error('YouTube 영상 주소만 등록할 수 있습니다.')
+  }
+
+  url.protocol = 'https:'
+  return url.toString()
+}
+
+function showRecommendationMessage(
+  message,
+  isError = false
+) {
+  const messageElement = document.querySelector(
+    '#recommendationFormMessage'
+  )
+
+  if (!messageElement) {
+    return
+  }
+
+  messageElement.textContent = message
+  messageElement.classList.toggle(
+    'error-message',
+    isError
+  )
+}
+
+function resetRecommendationForm() {
+  const form = document.querySelector(
+    '#songRecommendationForm'
+  )
+
+  if (!form) {
+    return
+  }
+
+  form.reset()
+  editingRecommendationId = null
+
+  document.querySelector(
+    '#recommendationFormTitle'
+  ).textContent = '새 곡 추천하기'
+
+  document.querySelector(
+    '#saveRecommendationButton'
+  ).textContent = '추천곡 올리기'
+
+  document.querySelector(
+    '#cancelRecommendationEditButton'
+  ).hidden = true
+}
+
+function startRecommendationEdit(recommendation) {
+  const form = document.querySelector(
+    '#songRecommendationForm'
+  )
+
+  if (!form) {
+    return
+  }
+
+  editingRecommendationId = recommendation.id
+  form.elements.title.value = recommendation.title
+  form.elements.artist.value = recommendation.artist
+  form.elements.youtubeUrl.value =
+    recommendation.youtube_url
+  form.elements.reason.value = recommendation.reason
+
+  document.querySelector(
+    '#recommendationFormTitle'
+  ).textContent = '추천곡 수정하기'
+
+  document.querySelector(
+    '#saveRecommendationButton'
+  ).textContent = '수정 내용 저장'
+
+  document.querySelector(
+    '#cancelRecommendationEditButton'
+  ).hidden = false
+
+  showRecommendationMessage('')
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  form.elements.title.focus({ preventScroll: true })
+}
+
+async function handleRecommendationSubmit(event) {
+  event.preventDefault()
+
+  const state = boardState
+  const form = event.currentTarget
+  const saveButton = document.querySelector(
+    '#saveRecommendationButton'
+  )
+
+  if (!state || !saveButton) {
+    return
+  }
+
+  const title = form.elements.title.value.trim()
+  const artist = form.elements.artist.value.trim()
+  const reason = form.elements.reason.value.trim()
+
+  let youtubeUrl
+
+  try {
+    youtubeUrl = normalizeYouTubeUrl(
+      form.elements.youtubeUrl.value
+    )
+  } catch (error) {
+    showRecommendationMessage(error.message, true)
+    return
+  }
+
+  if (!title || !artist || !reason) {
+    showRecommendationMessage(
+      '곡명, 아티스트, 추천 이유를 모두 입력해주세요.',
+      true
+    )
+    return
+  }
+
+  saveButton.disabled = true
+  showRecommendationMessage('저장하고 있습니다.')
+
+  const recommendationValues = {
+    title,
+    artist,
+    youtube_url: youtubeUrl,
+    reason
+  }
+
+  const result = editingRecommendationId
+    ? await supabase
+        .from('song_recommendations')
+        .update(recommendationValues)
+        .eq('id', editingRecommendationId)
+    : await supabase
+        .from('song_recommendations')
+        .insert({
+          ...recommendationValues,
+          created_by: state.session.user.id
+        })
+
+  if (boardState !== state) {
+    return
+  }
+
+  if (result.error) {
+    console.error(result.error)
+    showRecommendationMessage(
+      `추천곡 저장 실패: ${result.error.message}`,
+      true
+    )
+    saveButton.disabled = false
+    return
+  }
+
+  const successMessage = editingRecommendationId
+    ? '추천곡이 수정됐습니다.'
+    : '추천곡이 등록됐습니다.'
+
+  resetRecommendationForm()
+  saveButton.disabled = false
+  showRecommendationMessage(successMessage)
+  await refreshSongRecommendations(true)
+}
+
+async function handleRecommendationDelete(recommendation) {
+  const confirmed = window.confirm(
+    `"${recommendation.title}" 추천을 삭제할까요?`
+  )
+
+  if (!confirmed) {
+    return
+  }
+
+  const { error } = await supabase
+    .from('song_recommendations')
+    .delete()
+    .eq('id', recommendation.id)
+
+  if (error) {
+    console.error(error)
+    alert(`추천곡 삭제 실패: ${error.message}`)
+    return
+  }
+
+  if (editingRecommendationId === recommendation.id) {
+    resetRecommendationForm()
+    showRecommendationMessage('')
+  }
+
+  await refreshSongRecommendations(true)
+}
+
+async function handleRecommendationVote(
+  recommendation,
+  hasMyVote,
+  button
+) {
+  const state = boardState
+
+  if (!state) {
+    return
+  }
+
+  button.disabled = true
+
+  const query = supabase.from('song_recommendation_votes')
+  const result = hasMyVote
+    ? await query
+        .delete()
+        .eq('recommendation_id', recommendation.id)
+        .eq('user_id', state.session.user.id)
+    : await query.insert({
+        recommendation_id: recommendation.id,
+        user_id: state.session.user.id
+      })
+
+  if (boardState !== state) {
+    return
+  }
+
+  if (result.error) {
+    console.error(result.error)
+    alert(`투표 변경 실패: ${result.error.message}`)
+    button.disabled = false
+    return
+  }
+
+  await refreshSongRecommendations(true)
+}
+
+async function handleRecommendationStatusChange(
+  recommendation,
+  select
+) {
+  const previousStatus = recommendation.status
+  select.disabled = true
+
+  const { error } = await supabase
+    .from('song_recommendations')
+    .update({ status: select.value })
+    .eq('id', recommendation.id)
+
+  if (error) {
+    console.error(error)
+    select.value = previousStatus
+    select.disabled = false
+    alert(`추천 상태 변경 실패: ${error.message}`)
+    return
+  }
+
+  await refreshSongRecommendations(true)
+}
+
+function createRecommendationCard(
+  recommendation,
+  votes,
+  membersByUserId
+) {
+  const state = boardState
+  const card = document.createElement('article')
+  card.className =
+    `recommendation-card status-${recommendation.status}`
+
+  const cardHeader = document.createElement('div')
+  cardHeader.className = 'recommendation-card-header'
+
+  const titleGroup = document.createElement('div')
+  titleGroup.className = 'recommendation-title-group'
+
+  const title = document.createElement('h3')
+  title.textContent = recommendation.title
+
+  const artist = document.createElement('p')
+  artist.className = 'recommendation-artist'
+  artist.textContent = recommendation.artist
+
+  titleGroup.append(title, artist)
+
+  const statusBadge = document.createElement('span')
+  statusBadge.className = 'recommendation-status-badge'
+  statusBadge.textContent = getStatusLabel(
+    recommendation.status
+  )
+
+  cardHeader.append(titleGroup, statusBadge)
+
+  const reason = document.createElement('p')
+  reason.className = 'recommendation-reason'
+  reason.textContent = recommendation.reason
+
+  const recommender = membersByUserId.get(
+    recommendation.created_by
+  )
+
+  const meta = document.createElement('p')
+  meta.className = 'recommendation-meta'
+  meta.textContent =
+    `추천자: ${recommender?.display_name ?? '밴드원'} · ` +
+    formatRecommendationDate(recommendation.created_at)
+
+  const footer = document.createElement('div')
+  footer.className = 'recommendation-card-footer'
+
+  const primaryActions = document.createElement('div')
+  primaryActions.className = 'recommendation-primary-actions'
+
+  const youtubeLink = document.createElement('a')
+  youtubeLink.className = 'youtube-link'
+  youtubeLink.href = recommendation.youtube_url
+  youtubeLink.target = '_blank'
+  youtubeLink.rel = 'noopener noreferrer'
+  youtubeLink.textContent = 'YouTube에서 듣기'
+
+  const recommendationVotes = votes.filter(
+    (vote) =>
+      vote.recommendation_id === recommendation.id
+  )
+
+  const hasMyVote = recommendationVotes.some(
+    (vote) => vote.user_id === state.session.user.id
+  )
+
+  const voteButton = document.createElement('button')
+  voteButton.className = 'recommendation-vote-button'
+  voteButton.classList.toggle('is-voted', hasMyVote)
+  voteButton.type = 'button'
+  voteButton.textContent =
+    `${hasMyVote ? '✓ ' : ''}합주해 보고 싶어요 ` +
+    `${recommendationVotes.length}명`
+  voteButton.addEventListener('click', () => {
+    void handleRecommendationVote(
+      recommendation,
+      hasMyVote,
+      voteButton
+    )
+  })
+
+  primaryActions.append(youtubeLink, voteButton)
+  footer.append(primaryActions)
+
+  const canManageRecommendation =
+    state.currentMember.role === 'admin' ||
+    recommendation.created_by === state.session.user.id
+
+  if (
+    canManageRecommendation ||
+    state.currentMember.role === 'admin'
+  ) {
+    const managementActions = document.createElement('div')
+    managementActions.className =
+      'recommendation-management-actions'
+
+    if (state.currentMember.role === 'admin') {
+      const statusSelect = document.createElement('select')
+      statusSelect.className = 'recommendation-status-select'
+      statusSelect.setAttribute(
+        'aria-label',
+        `${recommendation.title} 추천 상태`
+      )
+
+      RECOMMENDATION_STATUSES.forEach((status) => {
+        const option = document.createElement('option')
+        option.value = status.value
+        option.textContent = status.label
+        statusSelect.append(option)
+      })
+
+      statusSelect.value = recommendation.status
+      statusSelect.addEventListener('change', () => {
+        void handleRecommendationStatusChange(
+          recommendation,
+          statusSelect
+        )
+      })
+
+      managementActions.append(statusSelect)
+    }
+
+    if (canManageRecommendation) {
+      const editButton = document.createElement('button')
+      editButton.className =
+        'recommendation-management-button edit-recommendation-button'
+      editButton.type = 'button'
+      editButton.textContent = '수정'
+      editButton.addEventListener('click', () => {
+        startRecommendationEdit(recommendation)
+      })
+
+      const deleteButton = document.createElement('button')
+      deleteButton.className =
+        'recommendation-management-button delete-recommendation-button'
+      deleteButton.type = 'button'
+      deleteButton.textContent = '삭제'
+      deleteButton.addEventListener('click', () => {
+        void handleRecommendationDelete(recommendation)
+      })
+
+      managementActions.append(editButton, deleteButton)
+    }
+
+    footer.append(managementActions)
+  }
+
+  card.append(cardHeader, reason, meta, footer)
+  return card
+}
+
+function renderRecommendationList(recommendations, votes) {
+  const list = document.querySelector('#recommendationList')
+
+  if (!list || !boardState) {
+    return
+  }
+
+  list.replaceChildren()
+
+  if (recommendations.length === 0) {
+    const emptyMessage = document.createElement('p')
+    emptyMessage.className = 'empty-message'
+    emptyMessage.textContent =
+      '아직 추천된 곡이 없습니다. 첫 곡을 추천해보세요.'
+    list.append(emptyMessage)
+    return
+  }
+
+  const membersByUserId = new Map(
+    boardState.members
+      .filter((member) => member.user_id)
+      .map((member) => [member.user_id, member])
+  )
+
+  const fragment = document.createDocumentFragment()
+
+  recommendations.forEach((recommendation) => {
+    fragment.append(
+      createRecommendationCard(
+        recommendation,
+        votes,
+        membersByUserId
+      )
+    )
+  })
+
+  list.append(fragment)
+}
+
+export function mountSongRecommendations({
+  session,
+  currentMember,
+  members
+}) {
+  const container = document.querySelector(
+    '#songRecommendationsView'
+  )
+
+  if (!container) {
+    return
+  }
+
+  boardState = {
+    session,
+    currentMember,
+    members
+  }
+  recommendationsById = new Map()
+  editingRecommendationId = null
+  hasLoadedRecommendations = false
+
+  container.innerHTML = `
+    <section class="recommendation-intro">
+      <h2>곡 추천</h2>
+      <p>
+        함께 합주해 보고 싶은 곡을 추천하고
+        멤버들의 의견을 모아보세요.
+      </p>
+    </section>
+
+    <section class="recommendation-form-section">
+      <h2 id="recommendationFormTitle">
+        새 곡 추천하기
+      </h2>
+
+      <form
+        id="songRecommendationForm"
+        class="recommendation-form"
+      >
+        <div class="recommendation-form-row">
+          <div class="form-group">
+            <label for="recommendationTitle">곡명</label>
+            <input
+              id="recommendationTitle"
+              name="title"
+              type="text"
+              maxlength="200"
+              required
+            >
+          </div>
+
+          <div class="form-group">
+            <label for="recommendationArtist">
+              아티스트
+            </label>
+            <input
+              id="recommendationArtist"
+              name="artist"
+              type="text"
+              maxlength="200"
+              required
+            >
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="recommendationYoutubeUrl">
+            YouTube 주소
+          </label>
+          <input
+            id="recommendationYoutubeUrl"
+            name="youtubeUrl"
+            type="text"
+            inputmode="url"
+            maxlength="500"
+            placeholder="https://youtu.be/..."
+            required
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="recommendationReason">
+            추천 이유
+          </label>
+          <textarea
+            id="recommendationReason"
+            name="reason"
+            rows="3"
+            maxlength="2000"
+            placeholder="합주해 보고 싶은 이유를 남겨주세요."
+            required
+          ></textarea>
+        </div>
+
+        <div class="recommendation-form-actions">
+          <button
+            id="saveRecommendationButton"
+            class="save-button"
+            type="submit"
+          >
+            추천곡 올리기
+          </button>
+
+          <button
+            id="cancelRecommendationEditButton"
+            class="cancel-edit-button"
+            type="button"
+            hidden
+          >
+            수정 취소
+          </button>
+        </div>
+
+        <p
+          id="recommendationFormMessage"
+          class="form-message"
+          aria-live="polite"
+        ></p>
+      </form>
+    </section>
+
+    <section class="recommendation-list-section">
+      <h2>추천곡 목록</h2>
+      <div
+        id="recommendationList"
+        class="recommendation-list"
+        aria-live="polite"
+      >
+        <p class="empty-message">
+          추천곡을 불러오고 있습니다.
+        </p>
+      </div>
+    </section>
+  `
+
+  document
+    .querySelector('#songRecommendationForm')
+    .addEventListener('submit', (event) => {
+      void handleRecommendationSubmit(event)
+    })
+
+  document
+    .querySelector('#cancelRecommendationEditButton')
+    .addEventListener('click', () => {
+      resetRecommendationForm()
+      showRecommendationMessage('')
+    })
+}
+
+export async function showSongRecommendations() {
+  if (hasLoadedRecommendations) {
+    return
+  }
+
+  await refreshSongRecommendations(true)
+}
+
+export async function refreshSongRecommendations(
+  force = false
+) {
+  const state = boardState
+  const list = document.querySelector('#recommendationList')
+
+  if (
+    !state ||
+    !list ||
+    (!force && !hasLoadedRecommendations)
+  ) {
+    return
+  }
+
+  if (!hasLoadedRecommendations) {
+    list.innerHTML = `
+      <p class="empty-message">
+        추천곡을 불러오고 있습니다.
+      </p>
+    `
+  }
+
+  const [recommendationsResult, votesResult] =
+    await Promise.all([
+      supabase
+        .from('song_recommendations')
+        .select(`
+          id,
+          title,
+          artist,
+          youtube_url,
+          reason,
+          status,
+          created_by,
+          created_at,
+          updated_at
+        `)
+        .order('created_at', { ascending: false })
+        .limit(100),
+
+      supabase
+        .from('song_recommendation_votes')
+        .select(`
+          recommendation_id,
+          user_id
+        `)
+    ])
+
+  if (boardState !== state) {
+    return
+  }
+
+  const error =
+    recommendationsResult.error ?? votesResult.error
+
+  if (error) {
+    console.error(error)
+    list.innerHTML = ''
+
+    const errorMessage = document.createElement('p')
+    errorMessage.className = 'empty-message error-message'
+    errorMessage.textContent =
+      '추천곡을 불러오지 못했습니다. ' +
+      'Supabase 설정을 확인해주세요.'
+    list.append(errorMessage)
+    return
+  }
+
+  hasLoadedRecommendations = true
+  recommendationsById = new Map(
+    recommendationsResult.data.map((recommendation) => [
+      recommendation.id,
+      recommendation
+    ])
+  )
+
+  if (
+    editingRecommendationId &&
+    !recommendationsById.has(editingRecommendationId)
+  ) {
+    resetRecommendationForm()
+    showRecommendationMessage('')
+  }
+
+  renderRecommendationList(
+    recommendationsResult.data,
+    votesResult.data
+  )
+}
+
+export function unmountSongRecommendations() {
+  boardState = null
+  recommendationsById = new Map()
+  editingRecommendationId = null
+  hasLoadedRecommendations = false
+}
