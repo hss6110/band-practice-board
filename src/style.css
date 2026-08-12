@@ -198,6 +198,17 @@ h2 {
   font-weight: 700;
 }
 
+.delete-log-button {
+  margin-left: auto;
+  padding: 5px 9px;
+  background-color: #e74c3c;
+  font-size: 0.8rem;
+}
+
+.delete-log-button:hover {
+  background-color: #c0392b;
+}
+
 .log-comment {
   line-height: 1.6;
   overflow-wrap: anywhere;

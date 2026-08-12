@@ -300,7 +300,36 @@ function renderChart(members, categories, logs) {
   })
 }
 
-function renderFeed(logs, members, categories) {
+async function handleDeletePracticeLog(logId, session) {
+  const confirmed = window.confirm(
+    '이 연습 기록을 삭제할까요?'
+  )
+
+  if (!confirmed) {
+    return
+  }
+
+  const { error } = await supabase
+    .from('practice_logs')
+    .delete()
+    .eq('id', logId)
+
+  if (error) {
+    console.error(error)
+    alert(`기록 삭제 실패: ${error.message}`)
+    return
+  }
+
+  await render(session)
+}
+
+function renderFeed(
+  logs,
+  members,
+  categories,
+  currentMember,
+  session
+) {
   const feedList = document.querySelector('#feedList')
   feedList.replaceChildren()
 
@@ -351,7 +380,24 @@ function renderFeed(logs, members, categories) {
     comment.className = 'log-comment'
     comment.textContent = log.comment
 
-    header.append(badge, details)
+      header.append(badge, details)
+
+    const canDelete =
+      currentMember.role === 'admin' ||
+      log.created_by === session.user.id
+
+    if (canDelete) {
+      const deleteButton = document.createElement('button')
+      deleteButton.className = 'delete-log-button'
+      deleteButton.type = 'button'
+      deleteButton.textContent = '삭제'
+      deleteButton.addEventListener('click', () => {
+        void handleDeletePracticeLog(log.id, session)
+      })
+
+      header.append(deleteButton)
+    }
+
     card.append(header, comment)
     fragment.append(card)
   })
@@ -630,7 +676,13 @@ function renderDashboard(session, dashboardData) {
 
   attachLogoutButton()
   renderChart(members, categories, weeklyLogs)
-  renderFeed(recentLogs, members, categories)
+  renderFeed(
+    recentLogs,
+    members,
+    categories,
+    currentMember,
+    session
+  )
 }
 
 async function render(session) {
