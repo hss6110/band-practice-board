@@ -10,6 +10,7 @@ let realtimeChannel = null
 let realtimeTimer = null
 let realtimeSession = null
 let realtimeFullRefresh = false
+let selectedWeekStart = getCurrentWeekStart()
 
 function destroyChart() {
   if (practiceChart) {
@@ -28,6 +29,20 @@ function getCurrentWeekStart() {
   monday.setHours(0, 0, 0, 0)
 
   return monday
+}
+
+function moveWeek(weekStart, amount) {
+  const movedWeek = new Date(weekStart)
+  movedWeek.setDate(movedWeek.getDate() + amount * 7)
+
+  return movedWeek
+}
+
+function isCurrentWeek(weekStart) {
+  return (
+    weekStart.getTime() ===
+    getCurrentWeekStart().getTime()
+  )
 }
 
 function formatWeekRange(weekStart) {
@@ -69,6 +84,7 @@ function attachLogoutButton() {
 
 function renderSignedOut() {
   destroyChart()
+  selectedWeekStart = getCurrentWeekStart()
 
   app.innerHTML = `
     <main class="login-container">
@@ -131,8 +147,28 @@ function renderError(message) {
   attachLogoutButton()
 }
 
+function getWeeklyLogsQuery(weekStart) {
+  const weekEnd = moveWeek(weekStart, 1)
+
+  return supabase
+    .from('practice_logs')
+    .select(`
+      id,
+      member_id,
+      category_id,
+      minutes,
+      comment,
+      practiced_at,
+      created_at,
+      created_by
+    `)
+    .gte('practiced_at', weekStart.toISOString())
+    .lt('practiced_at', weekEnd.toISOString())
+    .order('practiced_at', { ascending: false })
+}
+
 async function loadDashboardData(session) {
-  const weekStart = getCurrentWeekStart()
+  const weekStart = new Date(selectedWeekStart)
 
   const [
     membersResult,
@@ -165,20 +201,7 @@ async function loadDashboardData(session) {
       `)
       .order('sort_order'),
 
-    supabase
-      .from('practice_logs')
-      .select(`
-        id,
-        member_id,
-        category_id,
-        minutes,
-        comment,
-        practiced_at,
-        created_at,
-        created_by
-      `)
-      .gte('practiced_at', weekStart.toISOString())
-      .order('practiced_at', { ascending: false }),
+    getWeeklyLogsQuery(weekStart),
 
     supabase
       .from('practice_logs')
@@ -415,6 +438,95 @@ function renderChart(members, categories, logs) {
       }
     }
   })
+}
+
+function updateWeekNavigation(weekStart) {
+  const showingCurrentWeek = isCurrentWeek(weekStart)
+
+  document.querySelector('#chartTitle').textContent =
+    showingCurrentWeek
+      ? '이번 주 연습량'
+      : '주간 연습량'
+
+  document.querySelector('#weekRange').textContent =
+    formatWeekRange(weekStart)
+
+  document.querySelector('#nextWeekButton').disabled =
+    showingCurrentWeek
+
+  document.querySelector('#currentWeekButton').hidden =
+    showingCurrentWeek
+}
+
+function setWeekNavigationLoading(isLoading) {
+  document.querySelector('#previousWeekButton').disabled =
+    isLoading
+
+  document.querySelector('#nextWeekButton').disabled =
+    isLoading || isCurrentWeek(selectedWeekStart)
+
+  document.querySelector('#currentWeekButton').disabled =
+    isLoading
+}
+
+async function showWeek(
+  weekStart,
+  members,
+  categories
+) {
+  const currentWeekStart = getCurrentWeekStart()
+
+  if (weekStart.getTime() > currentWeekStart.getTime()) {
+    return
+  }
+
+  setWeekNavigationLoading(true)
+
+  const { data, error } = await getWeeklyLogsQuery(weekStart)
+
+  if (error) {
+    console.error(error)
+    alert(`주간 기록 조회 실패: ${error.message}`)
+    setWeekNavigationLoading(false)
+    return
+  }
+
+  selectedWeekStart = new Date(weekStart)
+  setWeekNavigationLoading(false)
+  renderChart(members, categories, data)
+  updateWeekNavigation(selectedWeekStart)
+}
+
+function attachWeekNavigation(members, categories) {
+  document
+    .querySelector('#previousWeekButton')
+    .addEventListener('click', () => {
+      void showWeek(
+        moveWeek(selectedWeekStart, -1),
+        members,
+        categories
+      )
+    })
+
+  document
+    .querySelector('#nextWeekButton')
+    .addEventListener('click', () => {
+      void showWeek(
+        moveWeek(selectedWeekStart, 1),
+        members,
+        categories
+      )
+    })
+
+  document
+    .querySelector('#currentWeekButton')
+    .addEventListener('click', () => {
+      void showWeek(
+        getCurrentWeekStart(),
+        members,
+        categories
+      )
+    })
 }
 
 async function handleDeletePracticeLog(logId, session) {
@@ -693,8 +805,41 @@ function renderDashboard(session, dashboardData) {
       </header>
 
       <section class="chart-section">
-        <h2>이번 주 연습량</h2>
-        <p id="weekRange" class="week-indicator"></p>
+        <h2 id="chartTitle"></h2>
+
+        <div class="week-navigation">
+          <button
+            id="previousWeekButton"
+            class="week-navigation-button"
+            type="button"
+          >
+            ← 지난주
+          </button>
+
+          <div class="week-navigation-center">
+            <p
+              id="weekRange"
+              class="week-indicator"
+              aria-live="polite"
+            ></p>
+            <button
+              id="currentWeekButton"
+              class="current-week-button"
+              type="button"
+              hidden
+            >
+              이번 주로
+            </button>
+          </div>
+
+          <button
+            id="nextWeekButton"
+            class="week-navigation-button"
+            type="button"
+          >
+            다음주 →
+          </button>
+        </div>
 
         <div class="chart-container">
           <canvas id="practiceChart"></canvas>
@@ -782,8 +927,8 @@ function renderDashboard(session, dashboardData) {
       ? '관리자'
       : '밴드원'
 
-  document.querySelector('#weekRange').textContent =
-    formatWeekRange(weekStart)
+  updateWeekNavigation(weekStart)
+  attachWeekNavigation(members, categories)
 
       populatePracticeForm(
     currentMember,

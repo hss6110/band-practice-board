@@ -105,10 +105,49 @@ h2 {
 }
 
 .week-indicator {
-  margin-bottom: 20px;
+  margin: 0;
   color: #7f8c8d;
   font-size: 0.9rem;
   text-align: center;
+}
+
+.week-navigation {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.week-navigation-center {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
+.week-navigation-button {
+  min-width: 96px;
+  padding: 8px 12px;
+  background-color: #7f8c8d;
+}
+
+.week-navigation-button:hover {
+  background-color: #626f70;
+}
+
+.current-week-button {
+  padding: 5px 9px;
+  font-size: 0.8rem;
+}
+
+.week-navigation-button:disabled,
+.current-week-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.week-navigation-button:disabled:hover {
+  background-color: #7f8c8d;
 }
 
 .chart-container {
@@ -457,6 +496,31 @@ h2 {
 
   .chart-container {
     height: 280px;
+  }
+
+  .week-navigation {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .week-navigation-center {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  #previousWeekButton {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  #nextWeekButton {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .week-navigation-button {
+    width: 100%;
+    min-width: 0;
   }
 
   .admin-grid {
