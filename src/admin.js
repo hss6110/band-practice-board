@@ -1,5 +1,7 @@
 import { supabase } from './supabase.js'
 
+let isAdminPanelOpen = false
+
 function getNextSortOrder(items) {
   const highestSortOrder = items.reduce(
     (highest, item) =>
@@ -640,113 +642,136 @@ export function renderAdminPanel({
 
   panel.hidden = false
   panel.innerHTML = `
-    <h2>관리자 설정</h2>
+    <details
+      id="adminPanelDetails"
+      class="admin-disclosure"
+      ${isAdminPanelOpen ? 'open' : ''}
+    >
+      <summary class="admin-summary">
+        <span class="admin-summary-title">
+          관리자 설정
+        </span>
+        <span class="admin-summary-hint">
+          멤버·카테고리 관리
+        </span>
+      </summary>
 
-    <p class="admin-description">
-      사용 중지를 해도 기존 연습 기록은 삭제되지 않습니다.
-      입력 목록과 차트 항목에서만 숨겨집니다.
-    </p>
+      <div class="admin-content">
+        <p class="admin-description">
+          사용 중지를 해도 기존 연습 기록은 삭제되지 않습니다.
+          입력 목록과 차트 항목에서만 숨겨집니다.
+        </p>
 
-    <div class="admin-grid">
-      <section class="admin-card">
-        <h3>멤버 관리</h3>
+        <div class="admin-grid">
+          <section class="admin-card">
+            <h3>멤버 관리</h3>
 
-        <form
-          id="addMemberForm"
-          class="admin-form"
-        >
-          <div class="form-group">
-            <label for="adminMemberName">
-              멤버 이름
-            </label>
-
-            <input
-              id="adminMemberName"
-              name="displayName"
-              maxlength="100"
-              placeholder="예: 김기타"
-              required
+            <form
+              id="addMemberForm"
+              class="admin-form"
             >
-          </div>
+              <div class="form-group">
+                <label for="adminMemberName">
+                  멤버 이름
+                </label>
 
-          <div class="form-group">
-            <label for="adminMemberPart">
-              파트
-            </label>
+                <input
+                  id="adminMemberName"
+                  name="displayName"
+                  maxlength="100"
+                  placeholder="예: 김기타"
+                  required
+                >
+              </div>
 
-            <input
-              id="adminMemberPart"
-              name="part"
-              maxlength="100"
-              placeholder="예: 기타"
-              required
+              <div class="form-group">
+                <label for="adminMemberPart">
+                  파트
+                </label>
+
+                <input
+                  id="adminMemberPart"
+                  name="part"
+                  maxlength="100"
+                  placeholder="예: 기타"
+                  required
+                >
+              </div>
+
+              <button
+                class="admin-add-button"
+                type="submit"
+              >
+                멤버 추가
+              </button>
+            </form>
+
+            <div
+              id="adminMemberList"
+              class="admin-list"
+            ></div>
+          </section>
+
+          <section class="admin-card">
+            <h3>카테고리 관리</h3>
+
+            <form
+              id="addCategoryForm"
+              class="admin-form"
             >
-          </div>
+              <div class="form-group">
+                <label for="adminCategoryName">
+                  카테고리 이름
+                </label>
 
-          <button
-            class="admin-add-button"
-            type="submit"
-          >
-            멤버 추가
-          </button>
-        </form>
+                <input
+                  id="adminCategoryName"
+                  name="categoryName"
+                  maxlength="100"
+                  placeholder="예: 리듬 연습"
+                  required
+                >
+              </div>
 
-        <div
-          id="adminMemberList"
-          class="admin-list"
-        ></div>
-      </section>
+              <div class="form-group">
+                <label for="adminCategoryColor">
+                  표시 색상
+                </label>
 
-      <section class="admin-card">
-        <h3>카테고리 관리</h3>
+                <input
+                  id="adminCategoryColor"
+                  name="categoryColor"
+                  type="color"
+                  value="#3498db"
+                  required
+                >
+              </div>
 
-        <form
-          id="addCategoryForm"
-          class="admin-form"
-        >
-          <div class="form-group">
-            <label for="adminCategoryName">
-              카테고리 이름
-            </label>
+              <button
+                class="admin-add-button"
+                type="submit"
+              >
+                카테고리 추가
+              </button>
+            </form>
 
-            <input
-              id="adminCategoryName"
-              name="categoryName"
-              maxlength="100"
-              placeholder="예: 리듬 연습"
-              required
-            >
-          </div>
-
-          <div class="form-group">
-            <label for="adminCategoryColor">
-              표시 색상
-            </label>
-
-            <input
-              id="adminCategoryColor"
-              name="categoryColor"
-              type="color"
-              value="#3498db"
-              required
-            >
-          </div>
-
-          <button
-            class="admin-add-button"
-            type="submit"
-          >
-            카테고리 추가
-          </button>
-        </form>
-
-        <div
-          id="adminCategoryList"
-          class="admin-list"
-        ></div>
-      </section>
-    </div>
+            <div
+              id="adminCategoryList"
+              class="admin-list"
+            ></div>
+          </section>
+        </div>
+      </div>
+    </details>
   `
+
+  const details = panel.querySelector(
+    '#adminPanelDetails'
+  )
+
+  details.addEventListener('toggle', () => {
+    isAdminPanelOpen = details.open
+  })
 
   renderMemberList(
     document.querySelector('#adminMemberList'),

@@ -371,8 +371,67 @@ h2 {
   border-top: 1px solid #ddd;
 }
 
+.admin-disclosure {
+  overflow: hidden;
+  border: 1px solid #d9e2e5;
+  border-radius: 8px;
+  background-color: #f8fafb;
+}
+
+.admin-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  color: #52616b;
+  cursor: pointer;
+  list-style: none;
+}
+
+.admin-summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-summary:hover {
+  color: #2c3e50;
+  background-color: #edf1f2;
+}
+
+.admin-summary:focus-visible {
+  outline: 3px solid rgb(52 152 219 / 35%);
+  outline-offset: -3px;
+}
+
+.admin-summary::after {
+  content: '펼치기';
+  flex: 0 0 auto;
+  color: #3498db;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.admin-disclosure[open] .admin-summary::after {
+  content: '접기';
+}
+
+.admin-summary-title {
+  font-weight: 700;
+}
+
+.admin-summary-hint {
+  margin-left: auto;
+  color: #7f8c8d;
+  font-size: 0.8rem;
+}
+
+.admin-content {
+  padding: 24px 20px 20px;
+  border-top: 1px solid #d9e2e5;
+  background-color: white;
+}
+
 .admin-description {
-  margin: -5px 0 25px;
+  margin: 0 0 25px;
   color: #7f8c8d;
   font-size: 0.9rem;
   line-height: 1.6;
