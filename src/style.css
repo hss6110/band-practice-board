@@ -851,6 +851,21 @@ h2 {
   font-size: 0.82rem;
 }
 
+.comments-load-more-button {
+  justify-self: center;
+  padding: 5px 10px;
+  border: 1px solid #c9d8dd;
+  color: #52616b;
+  background-color: #f7f9fa;
+  font-size: 0.78rem;
+}
+
+.comments-load-more-button:hover {
+  border-color: #3498db;
+  color: #2980b9;
+  background-color: #eef7fc;
+}
+
 .comment-item {
   padding: 9px 11px;
   border-radius: 5px;

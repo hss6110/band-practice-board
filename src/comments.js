@@ -1,5 +1,8 @@
 import { supabase } from './supabase.js'
 
+const COMMENTS_PAGE_SIZE = 5
+const commentVisibleCounts = new Map()
+
 const COMMENT_TARGETS = {
   practice: {
     table: 'practice_log_comments',
@@ -107,6 +110,10 @@ export function createCommentsSection({
   initialDraft = ''
 }) {
   const target = getCommentTarget(targetType)
+  const commentStateKey = getCommentDraftKey(
+    targetType,
+    targetId
+  )
   const section = document.createElement('section')
   section.className = 'comments-section'
 
@@ -147,6 +154,9 @@ export function createCommentsSection({
   message.setAttribute('aria-live', 'polite')
 
   let currentComments = comments
+  let visibleCommentCount =
+    commentVisibleCounts.get(commentStateKey) ??
+    COMMENTS_PAGE_SIZE
 
   function showMessage(text, isError = false) {
     message.textContent = text
@@ -178,6 +188,9 @@ export function createCommentsSection({
     list.replaceChildren()
 
     if (currentComments.length === 0) {
+      visibleCommentCount = COMMENTS_PAGE_SIZE
+      commentVisibleCounts.delete(commentStateKey)
+
       const emptyMessage = document.createElement('p')
       emptyMessage.className = 'comments-empty-message'
       emptyMessage.textContent = '아직 댓글이 없습니다.'
@@ -185,9 +198,39 @@ export function createCommentsSection({
       return
     }
 
+    const visibleComments = currentComments.slice(
+      -visibleCommentCount
+    )
+    const hiddenCommentCount =
+      currentComments.length - visibleComments.length
+
+    if (hiddenCommentCount > 0) {
+      const loadMoreButton = document.createElement('button')
+      const nextCommentCount = Math.min(
+        COMMENTS_PAGE_SIZE,
+        hiddenCommentCount
+      )
+
+      loadMoreButton.className =
+        'comments-load-more-button'
+      loadMoreButton.type = 'button'
+      loadMoreButton.textContent =
+        `이전 댓글 ${nextCommentCount}개 더보기`
+      loadMoreButton.addEventListener('click', () => {
+        visibleCommentCount += COMMENTS_PAGE_SIZE
+        commentVisibleCounts.set(
+          commentStateKey,
+          visibleCommentCount
+        )
+        renderCommentList()
+      })
+
+      list.append(loadMoreButton)
+    }
+
     const fragment = document.createDocumentFragment()
 
-    currentComments.forEach((comment) => {
+    visibleComments.forEach((comment) => {
       const item = document.createElement('div')
       item.className = 'comment-item'
 
