@@ -249,14 +249,128 @@ export function createCommentsSection({
 
       itemHeader.append(meta)
 
-      const canDelete =
+      const content = document.createElement('p')
+      content.className = 'comment-content'
+      content.textContent = comment.content
+
+      const canManage =
         isAdmin || comment.created_by === currentUserId
 
-      if (canDelete) {
+      if (canManage) {
+        const actions = document.createElement('div')
+        actions.className = 'comment-actions'
+
+        const editButton = document.createElement('button')
+        editButton.className = 'comment-edit-button'
+        editButton.type = 'button'
+        editButton.textContent = '수정'
+
         const deleteButton = document.createElement('button')
         deleteButton.className = 'comment-delete-button'
         deleteButton.type = 'button'
         deleteButton.textContent = '삭제'
+
+        editButton.addEventListener('click', () => {
+          const editForm = document.createElement('form')
+          editForm.className = 'comment-edit-form'
+
+          const editInput = document.createElement('textarea')
+          editInput.className = 'comment-edit-input'
+          editInput.rows = 2
+          editInput.maxLength = 1000
+          editInput.required = true
+          editInput.value = comment.content
+          editInput.setAttribute(
+            'aria-label',
+            `${target.label} 댓글 수정`
+          )
+
+          const editActions = document.createElement('div')
+          editActions.className = 'comment-edit-actions'
+
+          const saveButton = document.createElement('button')
+          saveButton.className = 'comment-edit-save-button'
+          saveButton.type = 'submit'
+          saveButton.textContent = '저장'
+
+          const cancelButton = document.createElement('button')
+          cancelButton.className = 'comment-edit-cancel-button'
+          cancelButton.type = 'button'
+          cancelButton.textContent = '취소'
+
+          const editMessage = document.createElement('p')
+          editMessage.className = 'comment-edit-message'
+          editMessage.setAttribute('aria-live', 'polite')
+
+          const closeEditor = () => {
+            editForm.remove()
+            content.hidden = false
+            editButton.disabled = false
+            deleteButton.disabled = false
+          }
+
+          cancelButton.addEventListener('click', closeEditor)
+
+          editForm.addEventListener(
+            'submit',
+            async (event) => {
+              event.preventDefault()
+
+              const nextContent = editInput.value.trim()
+
+              if (!nextContent) {
+                editMessage.textContent =
+                  '댓글 내용을 입력해주세요.'
+                editMessage.classList.add('error-message')
+                editInput.focus()
+                return
+              }
+
+              saveButton.disabled = true
+              cancelButton.disabled = true
+              editMessage.textContent = '수정하고 있습니다.'
+              editMessage.classList.remove('error-message')
+
+              const { data, error } = await supabase
+                .from(target.table)
+                .update({ content: nextContent })
+                .eq('id', comment.id)
+                .select('id')
+                .maybeSingle()
+
+              if (!section.isConnected) {
+                return
+              }
+
+              if (error || !data) {
+                console.error(error)
+                editMessage.textContent = error
+                  ? `댓글 수정 실패: ${error.message}`
+                  : '수정할 수 있는 댓글이 아닙니다.'
+                editMessage.classList.add('error-message')
+                saveButton.disabled = false
+                cancelButton.disabled = false
+                return
+              }
+
+              showMessage('댓글이 수정됐습니다.')
+              await refreshComments()
+            }
+          )
+
+          editActions.append(saveButton, cancelButton)
+          editForm.append(editInput, editActions, editMessage)
+          content.hidden = true
+          editButton.disabled = true
+          deleteButton.disabled = true
+          item.append(editForm)
+          editInput.focus()
+          editInput.setSelectionRange(
+            editInput.value.length,
+            editInput.value.length
+          )
+        })
+
         deleteButton.addEventListener('click', async () => {
           const confirmed = window.confirm(
             '이 댓글을 삭제할까요?'
@@ -287,12 +401,9 @@ export function createCommentsSection({
           await refreshComments()
         })
 
-        itemHeader.append(deleteButton)
+        actions.append(editButton, deleteButton)
+        itemHeader.append(actions)
       }
-
-      const content = document.createElement('p')
-      content.className = 'comment-content'
-      content.textContent = comment.content
 
       item.append(itemHeader, content)
       fragment.append(item)

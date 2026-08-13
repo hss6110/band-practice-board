@@ -337,21 +337,140 @@ h2 {
   font-weight: 700;
 }
 
-.delete-log-button {
+.log-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-left: auto;
+}
+
+.edit-log-button,
+.delete-log-button {
   padding: 5px 9px;
-  background-color: #e74c3c;
   font-size: 0.8rem;
+}
+
+.edit-log-button {
+  background-color: #27864b;
+}
+
+.edit-log-button:hover {
+  background-color: #1f6d3d;
+}
+
+.delete-log-button {
+  background-color: #e74c3c;
 }
 
 .delete-log-button:hover {
   background-color: #c0392b;
 }
 
+.edit-log-button:disabled,
+.delete-log-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .log-comment {
   line-height: 1.6;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.log-edit-form {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid #d9e2e5;
+  border-radius: 6px;
+  background-color: white;
+}
+
+.log-edit-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.log-edit-field {
+  display: grid;
+  gap: 6px;
+  color: #52616b;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.log-edit-field input,
+.log-edit-field select,
+.log-edit-field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #ccd5d8;
+  border-radius: 5px;
+  color: #333;
+  background-color: white;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.log-edit-field textarea {
+  resize: vertical;
+}
+
+.log-edit-field input:focus,
+.log-edit-field select:focus,
+.log-edit-field textarea:focus {
+  border-color: #3498db;
+  outline: 2px solid rgb(52 152 219 / 18%);
+}
+
+.log-edit-comment-field {
+  grid-column: 1 / -1;
+}
+
+.log-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.log-edit-save-button,
+.log-edit-cancel-button {
+  min-width: 72px;
+  padding: 7px 11px;
+  font-size: 0.8rem;
+}
+
+.log-edit-save-button {
+  background-color: #27864b;
+}
+
+.log-edit-save-button:hover {
+  background-color: #1f6d3d;
+}
+
+.log-edit-cancel-button {
+  background-color: #7f8c8d;
+}
+
+.log-edit-cancel-button:hover {
+  background-color: #626f70;
+}
+
+.log-edit-save-button:disabled,
+.log-edit-cancel-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.log-edit-message {
+  min-height: 18px;
+  margin: 7px 0 0;
+  color: #27864b;
+  font-size: 0.78rem;
+  text-align: right;
 }
 
 .empty-message {
@@ -943,12 +1062,31 @@ h2 {
   font-size: 0.75rem;
 }
 
-.comment-delete-button {
+.comment-actions {
+  display: flex;
+  align-items: center;
   flex: 0 0 auto;
+  gap: 3px;
+}
+
+.comment-edit-button,
+.comment-delete-button {
   padding: 3px 6px;
-  color: #c0392b;
   background-color: transparent;
   font-size: 0.72rem;
+}
+
+.comment-edit-button {
+  color: #27864b;
+}
+
+.comment-edit-button:hover {
+  color: white;
+  background-color: #27864b;
+}
+
+.comment-delete-button {
+  color: #c0392b;
 }
 
 .comment-delete-button:hover {
@@ -956,6 +1094,7 @@ h2 {
   background-color: #c0392b;
 }
 
+.comment-edit-button:disabled,
 .comment-delete-button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
@@ -966,6 +1105,73 @@ h2 {
   line-height: 1.5;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.comment-edit-form {
+  display: grid;
+  gap: 7px;
+  margin-top: 7px;
+}
+
+.comment-edit-input {
+  width: 100%;
+  min-height: 54px;
+  padding: 8px 10px;
+  border: 1px solid #d7dfe2;
+  border-radius: 5px;
+  color: #333;
+  background-color: white;
+  font-family: inherit;
+  font-size: 0.85rem;
+  resize: vertical;
+}
+
+.comment-edit-input:focus {
+  border-color: #3498db;
+  outline: 2px solid rgb(52 152 219 / 18%);
+}
+
+.comment-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.comment-edit-save-button,
+.comment-edit-cancel-button {
+  min-width: 58px;
+  padding: 5px 9px;
+  font-size: 0.75rem;
+}
+
+.comment-edit-save-button {
+  background-color: #27864b;
+}
+
+.comment-edit-save-button:hover {
+  background-color: #1f6d3d;
+}
+
+.comment-edit-cancel-button {
+  background-color: #7f8c8d;
+}
+
+.comment-edit-cancel-button:hover {
+  background-color: #626f70;
+}
+
+.comment-edit-save-button:disabled,
+.comment-edit-cancel-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.comment-edit-message {
+  min-height: 16px;
+  margin: 0;
+  color: #27864b;
+  font-size: 0.72rem;
+  text-align: right;
 }
 
 .comment-form {
@@ -1085,6 +1291,36 @@ h2 {
 
   .list-result-summary {
     text-align: center;
+  }
+
+  .log-header {
+    align-items: flex-start;
+  }
+
+  .log-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .log-actions button {
+    width: 100%;
+  }
+
+  .log-edit-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .log-edit-comment-field {
+    grid-column: auto;
+  }
+
+  .log-edit-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .log-edit-actions button {
+    width: 100%;
   }
 
   .admin-grid {

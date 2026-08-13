@@ -88,6 +88,31 @@ function formatLogDate(dateValue) {
   }).format(new Date(dateValue))
 }
 
+function getPracticeDateInputValue(dateValue) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date(dateValue))
+
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value])
+  )
+
+  return `${values.year}-${values.month}-${values.day}`
+}
+
+function getUpdatedPracticedAt(dateValue) {
+  const practicedAt = new Date(
+    `${dateValue}T12:00:00+09:00`
+  )
+
+  return Number.isNaN(practicedAt.getTime())
+    ? null
+    : practicedAt.toISOString()
+}
+
 function getGitHubUsername(session) {
   const metadata = session.user.user_metadata
 
@@ -821,6 +846,181 @@ async function handleDeletePracticeLog(logId, session) {
   await render(session)
 }
 
+function createPracticeLogEditForm({
+  log,
+  categories,
+  session,
+  onCancel
+}) {
+  const form = document.createElement('form')
+  form.className = 'log-edit-form'
+
+  const fields = document.createElement('div')
+  fields.className = 'log-edit-fields'
+
+  const dateGroup = document.createElement('label')
+  dateGroup.className = 'log-edit-field'
+  dateGroup.textContent = '연습 날짜'
+
+  const dateInput = document.createElement('input')
+  dateInput.type = 'date'
+  dateInput.required = true
+  dateInput.value = getPracticeDateInputValue(
+    log.practiced_at
+  )
+
+  const categoryGroup = document.createElement('label')
+  categoryGroup.className = 'log-edit-field'
+  categoryGroup.textContent = '연습 카테고리'
+
+  const categorySelect = document.createElement('select')
+  categorySelect.required = true
+
+  categories
+    .filter(
+      (category) =>
+        category.is_active || category.id === log.category_id
+    )
+    .forEach((category) => {
+      const option = document.createElement('option')
+      option.value = category.id
+      option.textContent = category.name
+      option.selected = category.id === log.category_id
+      categorySelect.append(option)
+    })
+
+  const minutesGroup = document.createElement('label')
+  minutesGroup.className = 'log-edit-field'
+  minutesGroup.textContent = '연습 시간 (분)'
+
+  const minutesInput = document.createElement('input')
+  minutesInput.type = 'number'
+  minutesInput.min = '1'
+  minutesInput.max = '1440'
+  minutesInput.step = '1'
+  minutesInput.required = true
+  minutesInput.value = String(log.minutes)
+
+  const commentGroup = document.createElement('label')
+  commentGroup.className =
+    'log-edit-field log-edit-comment-field'
+  commentGroup.textContent = '연습 내용 / 코멘트'
+
+  const commentInput = document.createElement('textarea')
+  commentInput.rows = 3
+  commentInput.maxLength = 1000
+  commentInput.required = true
+  commentInput.value = log.comment
+
+  dateGroup.append(dateInput)
+  categoryGroup.append(categorySelect)
+  minutesGroup.append(minutesInput)
+  commentGroup.append(commentInput)
+  fields.append(
+    dateGroup,
+    categoryGroup,
+    minutesGroup,
+    commentGroup
+  )
+
+  const actions = document.createElement('div')
+  actions.className = 'log-edit-actions'
+
+  const saveButton = document.createElement('button')
+  saveButton.className = 'log-edit-save-button'
+  saveButton.type = 'submit'
+  saveButton.textContent = '저장'
+
+  const cancelButton = document.createElement('button')
+  cancelButton.className = 'log-edit-cancel-button'
+  cancelButton.type = 'button'
+  cancelButton.textContent = '취소'
+  cancelButton.addEventListener('click', onCancel)
+
+  const message = document.createElement('p')
+  message.className = 'log-edit-message'
+  message.setAttribute('aria-live', 'polite')
+
+  actions.append(saveButton, cancelButton)
+  form.append(fields, actions, message)
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault()
+
+    const categoryId = categorySelect.value
+    const minutes = Number(minutesInput.value)
+    const comment = commentInput.value.trim()
+    const practiceDate = dateInput.value
+    const practicedAt = getUpdatedPracticedAt(practiceDate)
+
+    if (!categoryId || !practicedAt) {
+      message.textContent =
+        '연습 날짜와 카테고리를 확인해주세요.'
+      message.classList.add('error-message')
+      return
+    }
+
+    if (
+      !Number.isInteger(minutes) ||
+      minutes < 1 ||
+      minutes > 1440
+    ) {
+      message.textContent =
+        '연습 시간은 1분에서 1440분 사이로 입력해주세요.'
+      message.classList.add('error-message')
+      return
+    }
+
+    if (!comment) {
+      message.textContent = '연습 내용을 입력해주세요.'
+      message.classList.add('error-message')
+      commentInput.focus()
+      return
+    }
+
+    const updates = {
+      category_id: categoryId,
+      minutes,
+      comment
+    }
+
+    if (
+      practiceDate !==
+      getPracticeDateInputValue(log.practiced_at)
+    ) {
+      updates.practiced_at = practicedAt
+    }
+
+    saveButton.disabled = true
+    cancelButton.disabled = true
+    message.textContent = '수정하고 있습니다.'
+    message.classList.remove('error-message')
+
+    const { data, error } = await supabase
+      .from('practice_logs')
+      .update(updates)
+      .eq('id', log.id)
+      .select('id')
+      .maybeSingle()
+
+    if (error || !data) {
+      console.error(error)
+      message.textContent = error
+        ? `기록 수정 실패: ${error.message}`
+        : '수정할 수 있는 연습 기록이 아닙니다.'
+      message.classList.add('error-message')
+      saveButton.disabled = false
+      cancelButton.disabled = false
+      return
+    }
+
+    await render(session)
+    showFormMessage('연습 기록이 수정됐습니다.')
+  })
+
+  return form
+}
+
 async function refreshPracticeList(
   session,
   members,
@@ -1073,20 +1273,60 @@ function renderFeed(
 
       header.append(badge, details)
 
-    const canDelete =
+    const canManage =
       currentMember.role === 'admin' ||
       log.created_by === session.user.id
 
-    if (canDelete) {
+    const editContainer = document.createElement('div')
+    editContainer.hidden = true
+
+    if (canManage) {
+      const logActions = document.createElement('div')
+      logActions.className = 'log-actions'
+
+      const editButton = document.createElement('button')
+      editButton.className = 'edit-log-button'
+      editButton.type = 'button'
+      editButton.textContent = '수정'
+      editButton.setAttribute('aria-expanded', 'false')
+
       const deleteButton = document.createElement('button')
       deleteButton.className = 'delete-log-button'
       deleteButton.type = 'button'
       deleteButton.textContent = '삭제'
+
+      editButton.addEventListener('click', () => {
+        const closeEditor = () => {
+          editContainer.replaceChildren()
+          editContainer.hidden = true
+          comment.hidden = false
+          editButton.disabled = false
+          deleteButton.disabled = false
+          editButton.setAttribute('aria-expanded', 'false')
+        }
+
+        editContainer.replaceChildren(
+          createPracticeLogEditForm({
+            log,
+            categories,
+            session,
+            onCancel: closeEditor
+          })
+        )
+        editContainer.hidden = false
+        comment.hidden = true
+        editButton.disabled = true
+        deleteButton.disabled = true
+        editButton.setAttribute('aria-expanded', 'true')
+        editContainer.querySelector('textarea')?.focus()
+      })
+
       deleteButton.addEventListener('click', () => {
         void handleDeletePracticeLog(log.id, session)
       })
 
-      header.append(deleteButton)
+      logActions.append(editButton, deleteButton)
+      header.append(logActions)
     }
 
     const commentsSection = createCommentsSection({
@@ -1102,7 +1342,12 @@ function renderFeed(
         ) ?? ''
     })
 
-    card.append(header, comment, commentsSection)
+    card.append(
+      header,
+      comment,
+      editContainer,
+      commentsSection
+    )
     fragment.append(card)
   })
 
