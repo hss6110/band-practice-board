@@ -746,7 +746,7 @@ h2 {
 
 .view-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
   margin-top: 28px;
   padding: 4px;
@@ -773,6 +773,359 @@ h2 {
 
 .view-tab-button.is-active:hover {
   background-color: #2980b9;
+}
+
+.metronome-section {
+  margin-top: 40px;
+}
+
+.metronome-intro {
+  text-align: center;
+}
+
+.metronome-intro h2 {
+  margin: 7px 0 8px;
+}
+
+.metronome-intro p {
+  margin: 0;
+  color: #6b8390;
+  line-height: 1.6;
+}
+
+.metronome-eyebrow {
+  display: inline-flex;
+  padding: 5px 10px;
+  border-radius: 999px;
+  color: #227a99;
+  background-color: #dff5fb;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.metronome-card {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  max-width: 620px;
+  margin: 26px auto 0;
+  padding: 26px;
+  border: 1px solid #cce8ef;
+  border-radius: 24px;
+  background:
+    radial-gradient(
+      circle at 16% 14%,
+      rgb(255 255 255 / 86%) 0 4%,
+      transparent 4.5%
+    ),
+    linear-gradient(180deg, #eefcff 0%, #dff4fa 52%, #f8fdff 100%);
+  box-shadow: 0 16px 36px rgb(53 132 158 / 15%);
+}
+
+.beluga-stage {
+  position: relative;
+  width: min(100%, 300px);
+  aspect-ratio: 543 / 724;
+  margin: 0 auto;
+}
+
+.beluga-sprite {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  background-position: 0 center;
+  background-repeat: no-repeat;
+  background-size: 400% 100%;
+  filter: drop-shadow(0 14px 14px rgb(28 112 143 / 16%));
+  transform-origin: 50% 72%;
+  will-change: transform, background-position;
+}
+
+.beluga-sprite[data-frame='idle'] {
+  background-position-x: 0;
+}
+
+.beluga-sprite[data-frame='left'] {
+  background-position-x: 33.3333%;
+}
+
+.beluga-sprite[data-frame='right'] {
+  background-position-x: 66.6667%;
+}
+
+.beluga-sprite[data-frame='accent'] {
+  background-position-x: 100%;
+}
+
+.beluga-sprite.is-clapping {
+  animation: beluga-clap 170ms ease-out;
+}
+
+.beluga-beat-ring {
+  position: absolute;
+  z-index: 3;
+  top: 60%;
+  left: 50%;
+  width: 36%;
+  aspect-ratio: 1;
+  border: 4px solid rgb(82 195 222 / 75%);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.35);
+}
+
+.beluga-beat-ring.is-visible {
+  animation: beluga-ring 240ms ease-out;
+}
+
+.beluga-bubble {
+  position: absolute;
+  z-index: 1;
+  border: 2px solid rgb(255 255 255 / 88%);
+  border-radius: 50%;
+  background-color: rgb(255 255 255 / 22%);
+  box-shadow: inset 2px 2px 3px rgb(255 255 255 / 58%);
+  animation: beluga-bubble-float 3.4s ease-in-out infinite;
+}
+
+.beluga-bubble-one {
+  top: 16%;
+  left: -5%;
+  width: 28px;
+  height: 28px;
+}
+
+.beluga-bubble-two {
+  top: 7%;
+  right: 1%;
+  width: 17px;
+  height: 17px;
+  animation-delay: -1.2s;
+}
+
+.beluga-bubble-three {
+  top: 43%;
+  right: -7%;
+  width: 36px;
+  height: 36px;
+  animation-delay: -2.1s;
+}
+
+.metronome-status {
+  min-height: 24px;
+  margin: -5px 0 9px;
+  color: #2f7188;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.metronome-beat-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  gap: 9px;
+}
+
+.metronome-beat-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #b8dce7;
+  transition:
+    transform 80ms ease,
+    background-color 80ms ease,
+    box-shadow 80ms ease;
+}
+
+.metronome-beat-dot.is-accent {
+  width: 13px;
+  height: 13px;
+  border: 2px solid #73c7db;
+  background-color: white;
+}
+
+.metronome-beat-dot.is-current {
+  background-color: #ef88a6;
+  box-shadow: 0 0 0 5px rgb(239 136 166 / 18%);
+  transform: scale(1.18);
+}
+
+.metronome-bpm-display {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 12px;
+  color: #256c85;
+}
+
+.metronome-bpm-value {
+  font-size: clamp(2.8rem, 10vw, 4.2rem);
+  line-height: 1;
+  letter-spacing: -0.06em;
+}
+
+.metronome-bpm-display span {
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.metronome-bpm-controls {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) 46px;
+  align-items: center;
+  gap: 12px;
+  margin-top: 15px;
+}
+
+.metronome-step-button {
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border-radius: 50%;
+  color: #256c85;
+  background-color: white;
+  box-shadow: 0 4px 10px rgb(36 108 133 / 12%);
+  font-size: 1.4rem;
+}
+
+.metronome-step-button:hover {
+  color: white;
+  background-color: #4fb5cf;
+}
+
+.metronome-bpm-slider,
+.metronome-volume-slider {
+  width: 100%;
+  accent-color: #4fb5cf;
+  cursor: pointer;
+}
+
+.metronome-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.metronome-setting-field {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid rgb(154 210 224 / 55%);
+  border-radius: 12px;
+  color: #4a7180;
+  background-color: rgb(255 255 255 / 62%);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.metronome-meter-select {
+  width: 100%;
+  min-height: 37px;
+  padding: 6px 9px;
+  border: 1px solid #bfdae3;
+  border-radius: 7px;
+  color: #315f70;
+  background-color: white;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.metronome-main-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.metronome-start-button {
+  min-height: 48px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #42abc7, #368ebc);
+  box-shadow: 0 8px 18px rgb(47 137 178 / 20%);
+  font-size: 1rem;
+}
+
+.metronome-start-button:hover {
+  background: linear-gradient(135deg, #369bb6, #2d7eaa);
+}
+
+.metronome-start-button.is-playing {
+  background: linear-gradient(135deg, #ef88a6, #df6e93);
+  box-shadow: 0 8px 18px rgb(223 110 147 / 22%);
+}
+
+.metronome-start-button.is-playing:hover {
+  background: linear-gradient(135deg, #e67b9b, #d56087);
+}
+
+.metronome-start-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.metronome-tap-button {
+  min-height: 48px;
+  border: 1px solid #9ed5e2;
+  border-radius: 12px;
+  color: #26728b;
+  background-color: rgb(255 255 255 / 82%);
+}
+
+.metronome-tap-button:hover {
+  color: white;
+  background-color: #4fb5cf;
+}
+
+.metronome-hint {
+  margin: 12px 0 0;
+  color: #6f909c;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+@keyframes beluga-clap {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+
+  45% {
+    transform: translateY(4px) scale(1.025, 0.985);
+  }
+
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes beluga-ring {
+  0% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(0.35);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.35);
+  }
+}
+
+@keyframes beluga-bubble-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-9px);
+  }
 }
 
 .recommendation-intro {
@@ -1293,6 +1646,33 @@ h2 {
     text-align: center;
   }
 
+  .view-tab-button {
+    padding-inline: 7px;
+    font-size: 0.8rem;
+  }
+
+  .metronome-section {
+    margin-top: 30px;
+  }
+
+  .metronome-card {
+    padding: 18px 15px;
+    border-radius: 18px;
+  }
+
+  .beluga-stage {
+    width: min(100%, 260px);
+  }
+
+  .metronome-settings,
+  .metronome-main-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .metronome-tap-button {
+    width: 100%;
+  }
+
   .log-header {
     align-items: flex-start;
   }
@@ -1392,5 +1772,13 @@ h2 {
 
   .comment-submit-button {
     width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beluga-sprite.is-clapping,
+  .beluga-beat-ring.is-visible,
+  .beluga-bubble {
+    animation: none;
   }
 }

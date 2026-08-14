@@ -19,6 +19,10 @@ import {
   createIlikeFilterValue,
   renderPagination
 } from './list-navigation.js'
+import {
+  mountMetronome,
+  unmountMetronome
+} from './metronome.js'
 
 const app = document.querySelector('#app')
 
@@ -134,6 +138,7 @@ function attachLogoutButton() {
 function renderSignedOut() {
   destroyChart()
   unmountSongRecommendations()
+  unmountMetronome()
   practiceListRequestId += 1
   selectedWeekStart = getCurrentWeekStart()
   activeView = 'practice'
@@ -158,6 +163,7 @@ function renderSignedOut() {
 function renderLoading() {
   destroyChart()
   unmountSongRecommendations()
+  unmountMetronome()
   practiceListRequestId += 1
 
   app.innerHTML = `
@@ -171,6 +177,7 @@ function renderLoading() {
 function renderPending() {
   destroyChart()
   unmountSongRecommendations()
+  unmountMetronome()
 
   app.innerHTML = `
     <main class="status-container">
@@ -189,6 +196,7 @@ function renderPending() {
 function renderError(message) {
   destroyChart()
   unmountSongRecommendations()
+  unmountMetronome()
 
   app.innerHTML = `
     <main class="status-container">
@@ -574,6 +582,7 @@ async function stopRealtime() {
   window.clearTimeout(realtimeTimer)
   realtimeTimer = null
   unmountSongRecommendations()
+  unmountMetronome()
 
   if (!realtimeChannel) {
     return
@@ -587,8 +596,10 @@ async function stopRealtime() {
 function showDashboardView(view) {
   activeView = view
 
+  const showingPractice = view === 'practice'
   const showingSongRecommendations =
     view === 'recommendations'
+  const showingMetronome = view === 'metronome'
 
   const practiceView = document.querySelector(
     '#practiceView'
@@ -596,32 +607,41 @@ function showDashboardView(view) {
   const recommendationsView = document.querySelector(
     '#songRecommendationsView'
   )
+  const metronomeView = document.querySelector(
+    '#metronomeView'
+  )
   const practiceTab = document.querySelector(
     '#practiceTabButton'
   )
   const recommendationsTab = document.querySelector(
     '#recommendationsTabButton'
   )
+  const metronomeTab = document.querySelector(
+    '#metronomeTabButton'
+  )
 
   if (
     !practiceView ||
     !recommendationsView ||
+    !metronomeView ||
     !practiceTab ||
-    !recommendationsTab
+    !recommendationsTab ||
+    !metronomeTab
   ) {
     return
   }
 
-  practiceView.hidden = showingSongRecommendations
+  practiceView.hidden = !showingPractice
   recommendationsView.hidden = !showingSongRecommendations
+  metronomeView.hidden = !showingMetronome
 
   practiceTab.classList.toggle(
     'is-active',
-    !showingSongRecommendations
+    showingPractice
   )
   practiceTab.setAttribute(
     'aria-selected',
-    String(!showingSongRecommendations)
+    String(showingPractice)
   )
 
   recommendationsTab.classList.toggle(
@@ -631,6 +651,15 @@ function showDashboardView(view) {
   recommendationsTab.setAttribute(
     'aria-selected',
     String(showingSongRecommendations)
+  )
+
+  metronomeTab.classList.toggle(
+    'is-active',
+    showingMetronome
+  )
+  metronomeTab.setAttribute(
+    'aria-selected',
+    String(showingMetronome)
   )
 
   if (showingSongRecommendations) {
@@ -654,6 +683,12 @@ function attachDashboardNavigation() {
     .querySelector('#recommendationsTabButton')
     .addEventListener('click', () => {
       showDashboardView('recommendations')
+    })
+
+  document
+    .querySelector('#metronomeTabButton')
+    .addEventListener('click', () => {
+      showDashboardView('metronome')
     })
 }
 
@@ -1506,6 +1541,8 @@ function renderDashboard(session, dashboardData) {
     weekStart
   } = dashboardData
 
+  unmountMetronome()
+
   app.innerHTML = `
     <main class="container">
       <header class="app-header">
@@ -1543,6 +1580,15 @@ function renderDashboard(session, dashboardData) {
           aria-selected="false"
         >
           곡 추천
+        </button>
+
+        <button
+          id="metronomeTabButton"
+          class="view-tab-button"
+          type="button"
+          aria-selected="false"
+        >
+          메트로놈
         </button>
       </nav>
 
@@ -1711,6 +1757,12 @@ function renderDashboard(session, dashboardData) {
         class="view-panel"
         hidden
       ></section>
+
+      <section
+        id="metronomeView"
+        class="view-panel"
+        hidden
+      ></section>
     </main>
   `
 
@@ -1726,6 +1778,9 @@ function renderDashboard(session, dashboardData) {
     session,
     currentMember,
     members
+  })
+  mountMetronome({
+    container: document.querySelector('#metronomeView')
   })
   attachDashboardNavigation()
   attachPracticeListControls(
