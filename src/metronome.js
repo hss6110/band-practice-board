@@ -1,17 +1,21 @@
 import belugaSpriteUrl from './assets/beluga-metronome-sprite.png'
+import bellySlapSoundUrl from './assets/beluga-belly-slap.wav'
 
 const BPM_MIN = 40
 const BPM_MAX = 240
 const DEFAULT_BPM = 100
 const DEFAULT_BEATS_PER_MEASURE = 4
 const DEFAULT_VOLUME = 0.55
+const DEFAULT_SOUND = 'belly'
+const SOUND_TYPES = ['belly', 'click']
 const LOOKAHEAD_MS = 25
 const SCHEDULE_AHEAD_SECONDS = 0.1
 
 const STORAGE_KEYS = {
   bpm: 'beluga-metronome-bpm',
   beatsPerMeasure: 'beluga-metronome-beats',
-  volume: 'beluga-metronome-volume'
+  volume: 'beluga-metronome-volume',
+  sound: 'beluga-metronome-sound'
 }
 
 let activeCleanup = null
@@ -22,7 +26,13 @@ function clamp(value, minimum, maximum) {
 
 function readStoredNumber(key, fallback) {
   try {
-    const value = Number(window.localStorage.getItem(key))
+    const storedValue = window.localStorage.getItem(key)
+
+    if (storedValue === null || storedValue.trim() === '') {
+      return fallback
+    }
+
+    const value = Number(storedValue)
     return Number.isFinite(value) ? value : fallback
   } catch {
     return fallback
@@ -32,6 +42,22 @@ function readStoredNumber(key, fallback) {
 function storeNumber(key, value) {
   try {
     window.localStorage.setItem(key, String(value))
+  } catch {
+    // 브라우저 저장소가 차단돼도 메트로놈은 계속 동작합니다.
+  }
+}
+
+function readStoredText(key, fallback) {
+  try {
+    return window.localStorage.getItem(key) ?? fallback
+  } catch {
+    return fallback
+  }
+}
+
+function storeText(key, value) {
+  try {
+    window.localStorage.setItem(key, value)
   } catch {
     // 브라우저 저장소가 차단돼도 메트로놈은 계속 동작합니다.
   }
@@ -60,6 +86,14 @@ function createMetronome(container) {
     0,
     1
   )
+
+  const storedSound = readStoredText(
+    STORAGE_KEYS.sound,
+    DEFAULT_SOUND
+  )
+  const initialSound = SOUND_TYPES.includes(storedSound)
+    ? storedSound
+    : DEFAULT_SOUND
 
   container.innerHTML = `
     <section class="metronome-section">
@@ -135,6 +169,14 @@ function createMetronome(container) {
           </label>
 
           <label class="metronome-setting-field">
+            소리
+            <select class="metronome-sound-select">
+              <option value="belly">벨루가 챱</option>
+              <option value="click">기본 틱</option>
+            </select>
+          </label>
+
+          <label class="metronome-setting-field">
             소리 크기
             <input
               class="metronome-volume-slider"
@@ -194,6 +236,9 @@ function createMetronome(container) {
   const meterSelect = container.querySelector(
     '.metronome-meter-select'
   )
+  const soundSelect = container.querySelector(
+    '.metronome-sound-select'
+  )
   const volumeSlider = container.querySelector(
     '.metronome-volume-slider'
   )
@@ -209,6 +254,7 @@ function createMetronome(container) {
   let bpm = initialBpm
   let beatsPerMeasure = initialBeats
   let volume = initialVolume
+  let soundType = initialSound
   let isPlaying = false
   let isStarting = false
   let audioContext = null
@@ -217,6 +263,9 @@ function createMetronome(container) {
   let nextBeatTime = 0
   let currentBeat = 0
   let tapTimes = []
+  let slapNoiseBuffer = null
+  let bellySlapSampleBuffer = null
+  let bellySlapSamplePromise = null
   const visualTimers = new Set()
 
   function renderBeatDots(activeBeat = null) {
@@ -267,9 +316,10 @@ function createMetronome(container) {
     sprite.classList.add('is-clapping')
     beatRing.classList.add('is-visible')
     renderBeatDots(beat)
+    const soundWord = soundType === 'belly' ? '챱!' : '짝!'
     status.textContent = isAccent
-      ? '첫 박! 양쪽 지느러미로 짝!'
-      : `${beat + 1}박, 짝!`
+      ? `첫 박! 양쪽 지느러미로 ${soundWord}`
+      : `${beat + 1}박, ${soundWord}`
 
     window.clearTimeout(spriteResetTimer)
     spriteResetTimer = window.setTimeout(() => {
@@ -279,11 +329,7 @@ function createMetronome(container) {
     }, Math.min(170, (60_000 / bpm) * 0.42))
   }
 
-  function scheduleSound(beat, time) {
-    if (!audioContext || volume <= 0) {
-      return
-    }
-
+  function scheduleClickSound(beat, time) {
     const oscillator = audioContext.createOscillator()
     const gain = audioContext.createGain()
     const isAccent = beat === 0
@@ -312,6 +358,237 @@ function createMetronome(container) {
     gain.connect(audioContext.destination)
     oscillator.start(time)
     oscillator.stop(time + 0.07)
+  }
+
+  function getSlapNoiseBuffer() {
+    if (slapNoiseBuffer) {
+      return slapNoiseBuffer
+    }
+
+    const duration = 0.11
+    const frameCount = Math.floor(
+      audioContext.sampleRate * duration
+    )
+    slapNoiseBuffer = audioContext.createBuffer(
+      1,
+      frameCount,
+      audioContext.sampleRate
+    )
+
+    const samples = slapNoiseBuffer.getChannelData(0)
+
+    for (let index = 0; index < frameCount; index += 1) {
+      const progress = index / frameCount
+      const naturalDecay = (1 - progress) ** 1.7
+      samples[index] =
+        (Math.random() * 2 - 1) * naturalDecay
+    }
+
+    return slapNoiseBuffer
+  }
+
+  async function loadBellySlapSample() {
+    if (bellySlapSampleBuffer || !audioContext) {
+      return
+    }
+
+    if (!bellySlapSamplePromise) {
+      const decodingContext = audioContext
+      bellySlapSamplePromise = fetch(bellySlapSoundUrl)
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error('배 박수 음원을 불러오지 못했어요.')
+          }
+
+          return response.arrayBuffer()
+        })
+        .then((audioData) =>
+          decodingContext.decodeAudioData(audioData)
+        )
+        .then((decodedBuffer) => {
+          bellySlapSampleBuffer = decodedBuffer
+        })
+        .catch((error) => {
+          bellySlapSamplePromise = null
+          throw error
+        })
+    }
+
+    await bellySlapSamplePromise
+  }
+
+  function scheduleRecordedBellySlapSound(beat, time) {
+    const source = audioContext.createBufferSource()
+    const gain = audioContext.createGain()
+    const isAccent = beat === 0
+
+    source.buffer = bellySlapSampleBuffer
+    source.playbackRate.setValueAtTime(
+      isAccent ? 0.96 : beat % 2 === 1 ? 1.02 : 0.99,
+      time
+    )
+    gain.gain.setValueAtTime(
+      volume * (isAccent ? 1.1 : 0.95),
+      time
+    )
+
+    source.connect(gain)
+    gain.connect(audioContext.destination)
+    source.start(time)
+  }
+
+  function scheduleBellySlapSound(beat, time) {
+    const isAccent = beat === 0
+    const clapNoise = audioContext.createBufferSource()
+    const clapHighpass = audioContext.createBiquadFilter()
+    const clapLowpass = audioContext.createBiquadFilter()
+    const clapGain = audioContext.createGain()
+    const bellyNoise = audioContext.createBufferSource()
+    const bellyFilter = audioContext.createBiquadFilter()
+    const bellyGain = audioContext.createGain()
+    const thump = audioContext.createOscillator()
+    const thumpFilter = audioContext.createBiquadFilter()
+    const thumpGain = audioContext.createGain()
+    const mixGain = audioContext.createGain()
+    const compressor = audioContext.createDynamicsCompressor()
+    const clapPeak = Math.max(
+      0.0001,
+      volume * (isAccent ? 0.52 : 0.42)
+    )
+    const bellyPeak = Math.max(
+      0.0001,
+      volume * (isAccent ? 0.38 : 0.3)
+    )
+    const thumpPeak = Math.max(
+      0.0001,
+      volume * (isAccent ? 0.17 : 0.13)
+    )
+
+    clapNoise.buffer = getSlapNoiseBuffer()
+    clapNoise.playbackRate.setValueAtTime(
+      beat % 2 === 1 ? 1.08 : 1.02,
+      time
+    )
+
+    clapHighpass.type = 'highpass'
+    clapHighpass.frequency.setValueAtTime(720, time)
+    clapLowpass.type = 'lowpass'
+    clapLowpass.frequency.setValueAtTime(6200, time)
+
+    const clapPulses = [
+      { offset: 0, strength: 1, decay: 0.006 },
+      { offset: 0.009, strength: 0.72, decay: 0.006 },
+      { offset: 0.018, strength: 0.52, decay: 0.045 }
+    ]
+
+    clapGain.gain.setValueAtTime(0.0001, time)
+    clapPulses.forEach(({ offset, strength, decay }) => {
+      const pulseTime = time + offset
+      clapGain.gain.setValueAtTime(0.0001, pulseTime)
+      clapGain.gain.linearRampToValueAtTime(
+        clapPeak * strength,
+        pulseTime + 0.0015
+      )
+      clapGain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        pulseTime + decay
+      )
+    })
+
+    bellyNoise.buffer = getSlapNoiseBuffer()
+    bellyNoise.playbackRate.setValueAtTime(
+      isAccent ? 0.78 : beat % 2 === 1 ? 0.88 : 0.84,
+      time
+    )
+
+    bellyFilter.type = 'bandpass'
+    bellyFilter.frequency.setValueAtTime(
+      isAccent ? 390 : 510,
+      time
+    )
+    bellyFilter.Q.setValueAtTime(0.9, time)
+
+    bellyGain.gain.setValueAtTime(0.0001, time)
+    bellyGain.gain.linearRampToValueAtTime(
+      bellyPeak,
+      time + 0.004
+    )
+    bellyGain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      time + 0.095
+    )
+
+    thump.type = 'triangle'
+    thump.frequency.setValueAtTime(
+      isAccent ? 122 : 138,
+      time
+    )
+    thump.frequency.exponentialRampToValueAtTime(
+      isAccent ? 58 : 68,
+      time + 0.095
+    )
+
+    thumpFilter.type = 'lowpass'
+    thumpFilter.frequency.setValueAtTime(280, time)
+    thumpFilter.Q.setValueAtTime(0.7, time)
+
+    thumpGain.gain.setValueAtTime(0.0001, time)
+    thumpGain.gain.linearRampToValueAtTime(
+      thumpPeak,
+      time + 0.003
+    )
+    thumpGain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      time + 0.11
+    )
+
+    mixGain.gain.setValueAtTime(0.92, time)
+    compressor.threshold.setValueAtTime(-20, time)
+    compressor.knee.setValueAtTime(14, time)
+    compressor.ratio.setValueAtTime(5, time)
+    compressor.attack.setValueAtTime(0.002, time)
+    compressor.release.setValueAtTime(0.08, time)
+
+    clapNoise.connect(clapHighpass)
+    clapHighpass.connect(clapLowpass)
+    clapLowpass.connect(clapGain)
+    clapGain.connect(mixGain)
+
+    bellyNoise.connect(bellyFilter)
+    bellyFilter.connect(bellyGain)
+    bellyGain.connect(mixGain)
+
+    thump.connect(thumpFilter)
+    thumpFilter.connect(thumpGain)
+    thumpGain.connect(mixGain)
+
+    mixGain.connect(compressor)
+    compressor.connect(audioContext.destination)
+
+    clapNoise.start(time)
+    clapNoise.stop(time + 0.105)
+    bellyNoise.start(time)
+    bellyNoise.stop(time + 0.12)
+    thump.start(time)
+    thump.stop(time + 0.115)
+  }
+
+  function scheduleSound(beat, time) {
+    if (!audioContext || volume <= 0) {
+      return
+    }
+
+    if (soundType === 'belly') {
+      if (bellySlapSampleBuffer) {
+        scheduleRecordedBellySlapSound(beat, time)
+        return
+      }
+
+      scheduleBellySlapSound(beat, time)
+      return
+    }
+
+    scheduleClickSound(beat, time)
   }
 
   function scheduleVisual(beat, time) {
@@ -373,6 +650,7 @@ function createMetronome(container) {
 
     if (!audioContext || audioContext.state === 'closed') {
       audioContext = new AudioContextClass()
+      slapNoiseBuffer = null
     }
 
     if (audioContext.state === 'suspended') {
@@ -412,6 +690,18 @@ function createMetronome(container) {
 
     try {
       await ensureAudioContext()
+
+      if (soundType === 'belly') {
+        try {
+          await loadBellySlapSample()
+        } catch (error) {
+          console.warn(
+            '녹음된 배 박수 음원 대신 합성음을 사용합니다.',
+            error
+          )
+        }
+      }
+
       isPlaying = true
       currentBeat = 0
       nextBeatTime = audioContext.currentTime + 0.06
@@ -489,6 +779,27 @@ function createMetronome(container) {
     storeNumber(STORAGE_KEYS.volume, volume)
   })
 
+  soundSelect.addEventListener('change', () => {
+    soundType = SOUND_TYPES.includes(soundSelect.value)
+      ? soundSelect.value
+      : DEFAULT_SOUND
+    storeText(STORAGE_KEYS.sound, soundType)
+
+    if (soundType === 'belly' && audioContext) {
+      void loadBellySlapSample().catch((error) => {
+        console.warn(
+          '녹음된 배 박수 음원 대신 합성음을 사용합니다.',
+          error
+        )
+      })
+    }
+
+    status.textContent =
+      soundType === 'belly'
+        ? '말랑한 벨루가 챱 소리로 맞췄어요.'
+        : '또렷한 기본 틱 소리로 맞췄어요.'
+  })
+
   startButton.addEventListener('click', () => {
     if (isPlaying) {
       stopMetronome()
@@ -502,6 +813,7 @@ function createMetronome(container) {
 
   bpmSlider.value = String(bpm)
   meterSelect.value = String(beatsPerMeasure)
+  soundSelect.value = soundType
   volumeSlider.value = String(volume)
   updateBpm(bpm, false)
   renderBeatDots()
