@@ -209,6 +209,92 @@ h2 {
   margin-top: 50px;
 }
 
+.recent-comments-section {
+  margin-top: 42px;
+  padding: 18px;
+  border: 1px solid #dce7ea;
+  border-radius: 8px;
+  background-color: #f8fbfc;
+}
+
+.recent-comments-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.recent-comments-heading h2 {
+  margin: 0;
+}
+
+.recent-comments-heading span {
+  flex: 0 0 auto;
+  color: #7f8c8d;
+  font-size: 0.78rem;
+}
+
+.recent-comments-list {
+  display: grid;
+  gap: 8px;
+}
+
+.recent-comment-item {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  padding: 11px 13px;
+  border: 1px solid #dce7ea;
+  border-radius: 6px;
+  color: #2c3e50;
+  background-color: white;
+  text-align: left;
+}
+
+.recent-comment-item:hover {
+  border-color: #78bde5;
+  color: #2c3e50;
+  background-color: #f1f9fd;
+}
+
+.recent-comment-item:focus-visible {
+  outline: 3px solid rgb(52 152 219 / 25%);
+  outline-offset: 1px;
+}
+
+.recent-comment-item:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.recent-comment-meta,
+.recent-comment-target {
+  color: #7f8c8d;
+  font-size: 0.76rem;
+}
+
+.recent-comment-content {
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.recent-comment-target {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-comments-empty {
+  margin: 0;
+  color: #95a5a6;
+  font-size: 0.85rem;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -311,6 +397,7 @@ h2 {
 
 .log-card {
   position: relative;
+  scroll-margin-top: 24px;
   margin-bottom: 15px;
   padding: 15px;
   border-left: 5px solid #3498db;
@@ -1182,6 +1269,7 @@ h2 {
 }
 
 .recommendation-card {
+  scroll-margin-top: 24px;
   padding: 18px;
   border: 1px solid #e2e7e9;
   border-left: 5px solid #3498db;
@@ -1358,6 +1446,22 @@ h2 {
   margin-top: 16px;
   padding-top: 14px;
   border-top: 1px solid #e2e7e9;
+}
+
+.log-card.is-comment-target,
+.recommendation-card.is-comment-target {
+  animation: comment-target-highlight 2.2s ease-out;
+}
+
+@keyframes comment-target-highlight {
+  0%,
+  35% {
+    box-shadow: 0 0 0 5px rgb(52 152 219 / 28%);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgb(52 152 219 / 0%);
+  }
 }
 
 .comments-header {
@@ -1780,6 +1884,12 @@ h2 {
   .beluga-sprite.is-clapping,
   .beluga-beat-ring.is-visible,
   .beluga-bubble {
+    animation: none;
+  }
+
+  .log-card.is-comment-target,
+  .recommendation-card.is-comment-target {
+    outline: 3px solid rgb(52 152 219 / 35%);
     animation: none;
   }
 }

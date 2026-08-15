@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js'
 
 const COMMENTS_PAGE_SIZE = 5
+const RECENT_COMMENTS_LIMIT = 5
 const commentVisibleCounts = new Map()
 
 const COMMENT_TARGETS = {
@@ -62,6 +63,134 @@ export async function loadComments(targetType, targetIds) {
     data: data ?? [],
     error
   }
+}
+
+export async function loadRecentComments(
+  targetType,
+  limit = RECENT_COMMENTS_LIMIT
+) {
+  const target = getCommentTarget(targetType)
+  const safeLimit = Math.min(
+    20,
+    Math.max(1, Math.floor(limit))
+  )
+
+  const { data, error } = await supabase
+    .from(target.table)
+    .select(`
+      id,
+      ${target.foreignKey},
+      content,
+      created_by,
+      created_at
+    `)
+    .order('created_at', { ascending: false })
+    .limit(safeLimit)
+
+  return {
+    data: data ?? [],
+    error
+  }
+}
+
+export function renderRecentComments({
+  container,
+  targetType,
+  comments,
+  membersByUserId,
+  getTargetLabel,
+  onSelect,
+  error = null
+}) {
+  if (!container) {
+    return
+  }
+
+  const target = getCommentTarget(targetType)
+  container.replaceChildren()
+
+  if (error) {
+    const errorMessage = document.createElement('p')
+    errorMessage.className =
+      'recent-comments-empty error-message'
+    errorMessage.textContent =
+      '최근 댓글을 불러오지 못했습니다.'
+    container.append(errorMessage)
+    return
+  }
+
+  if (comments.length === 0) {
+    const emptyMessage = document.createElement('p')
+    emptyMessage.className = 'recent-comments-empty'
+    emptyMessage.textContent = '아직 등록된 댓글이 없습니다.'
+    container.append(emptyMessage)
+    return
+  }
+
+  const fragment = document.createDocumentFragment()
+
+  comments.forEach((comment) => {
+    const targetId = comment[target.foreignKey]
+    const author = membersByUserId.get(comment.created_by)
+    const button = document.createElement('button')
+    button.className = 'recent-comment-item'
+    button.type = 'button'
+
+    const meta = document.createElement('span')
+    meta.className = 'recent-comment-meta'
+    meta.textContent =
+      `${author?.display_name ?? '밴드원'} · ` +
+      formatCommentDate(comment.created_at)
+
+    const content = document.createElement('span')
+    content.className = 'recent-comment-content'
+    content.textContent = comment.content
+
+    const targetLabel = document.createElement('span')
+    targetLabel.className = 'recent-comment-target'
+    targetLabel.textContent = `↳ ${getTargetLabel(comment)}`
+
+    button.setAttribute(
+      'aria-label',
+      `${content.textContent}. ${targetLabel.textContent}로 이동`
+    )
+    button.addEventListener('click', async () => {
+      button.disabled = true
+
+      try {
+        await onSelect(targetId)
+      } finally {
+        if (button.isConnected) {
+          button.disabled = false
+        }
+      }
+    })
+
+    button.append(meta, content, targetLabel)
+    fragment.append(button)
+  })
+
+  container.append(fragment)
+}
+
+export function revealCommentTarget(element) {
+  if (!element) {
+    return false
+  }
+
+  element.scrollIntoView({
+    behavior: 'smooth',
+    block: 'center'
+  })
+  element.classList.remove('is-comment-target')
+  void element.offsetWidth
+  element.classList.add('is-comment-target')
+
+  window.setTimeout(() => {
+    element.classList.remove('is-comment-target')
+  }, 2200)
+
+  return true
 }
 
 export function groupCommentsByTarget(

@@ -7,7 +7,10 @@ import {
   createCommentsSection,
   getCommentDraftKey,
   groupCommentsByTarget,
-  loadComments
+  loadComments,
+  loadRecentComments,
+  renderRecentComments,
+  revealCommentTarget
 } from './comments.js'
 import {
   mountSongRecommendations,
@@ -364,6 +367,44 @@ async function loadPracticeListData(members) {
   }
 }
 
+async function loadRecentPracticeCommentsData() {
+  const commentsResult = await loadRecentComments('practice')
+
+  if (commentsResult.error) {
+    throw commentsResult.error
+  }
+
+  const logIds = [
+    ...new Set(
+      commentsResult.data.map(
+        (comment) => comment.practice_log_id
+      )
+    )
+  ]
+
+  const logsResult = logIds.length > 0
+    ? await supabase
+        .from('practice_logs')
+        .select(`
+          id,
+          member_id,
+          comment,
+          practiced_at,
+          created_at
+        `)
+        .in('id', logIds)
+    : { data: [], error: null }
+
+  if (logsResult.error) {
+    throw logsResult.error
+  }
+
+  return {
+    comments: commentsResult.data,
+    logs: logsResult.data ?? []
+  }
+}
+
 async function loadDashboardData(session) {
   const weekStart = new Date(selectedWeekStart)
 
@@ -413,10 +454,22 @@ async function loadDashboardData(session) {
     }
   }
 
-  const [weeklyLogsResult, practiceListData] =
+  const [
+    weeklyLogsResult,
+    practiceListData,
+    recentPracticeCommentsData
+  ] =
     await Promise.all([
       getWeeklyLogsQuery(weekStart),
-      loadPracticeListData(members)
+      loadPracticeListData(members),
+      loadRecentPracticeCommentsData().catch((error) => {
+        console.error('최근 연습 댓글 조회 실패:', error)
+        return {
+          comments: [],
+          logs: [],
+          error
+        }
+      })
     ])
 
   if (weeklyLogsResult.error) {
@@ -432,6 +485,12 @@ async function loadDashboardData(session) {
     recentLogs: practiceListData.logs,
     practiceComments: practiceListData.comments,
     practiceTotalCount: practiceListData.totalCount,
+    recentPracticeComments:
+      recentPracticeCommentsData.comments,
+    recentPracticeCommentLogs:
+      recentPracticeCommentsData.logs,
+    recentPracticeCommentsError:
+      recentPracticeCommentsData.error ?? null,
     weekStart
   }
 }
@@ -512,6 +571,15 @@ async function refreshFromRealtime() {
           data.currentMember,
           session
         )
+        renderRecentPracticeComments({
+          comments: data.recentPracticeComments,
+          logs: data.recentPracticeCommentLogs,
+          error: data.recentPracticeCommentsError,
+          members: data.members,
+          session,
+          categories: data.categories,
+          currentMember: data.currentMember
+        })
         renderPracticeListControls(
           data.practiceTotalCount,
           session,
@@ -1121,6 +1189,128 @@ async function refreshPracticeList(
   }
 }
 
+async function getPracticeLogPage(logId) {
+  const { data: log, error: logError } = await supabase
+    .from('practice_logs')
+    .select('id, practiced_at')
+    .eq('id', logId)
+    .maybeSingle()
+
+  if (logError) {
+    throw logError
+  }
+
+  if (!log) {
+    return null
+  }
+
+  const { count, error: countError } = await supabase
+    .from('practice_logs')
+    .select('id', { count: 'exact', head: true })
+    .gt('practiced_at', log.practiced_at)
+
+  if (countError) {
+    throw countError
+  }
+
+  return Math.floor(
+    (count ?? 0) / PRACTICE_LOGS_PER_PAGE
+  ) + 1
+}
+
+async function showPracticeLogFromComment({
+  logId,
+  session,
+  members,
+  categories,
+  currentMember
+}) {
+  try {
+    const targetPage = await getPracticeLogPage(logId)
+
+    if (!targetPage) {
+      window.alert('해당 연습 기록을 찾을 수 없습니다.')
+      return
+    }
+
+    practiceListSearch = ''
+    practiceListPage = targetPage
+
+    await refreshPracticeList(
+      session,
+      members,
+      categories,
+      currentMember
+    )
+
+    const target = document.getElementById(
+      `practice-log-${logId}`
+    )
+
+    if (!revealCommentTarget(target)) {
+      window.alert('해당 연습 기록을 찾을 수 없습니다.')
+    }
+  } catch (error) {
+    console.error(error)
+    window.alert(
+      `연습 기록으로 이동하지 못했습니다: ${error.message}`
+    )
+  }
+}
+
+function renderRecentPracticeComments({
+  comments,
+  logs,
+  error,
+  members,
+  session,
+  categories,
+  currentMember
+}) {
+  const logsById = new Map(
+    logs.map((log) => [log.id, log])
+  )
+  const membersById = new Map(
+    members.map((member) => [member.id, member])
+  )
+  const membersByUserId = new Map(
+    members
+      .filter((member) => member.user_id)
+      .map((member) => [member.user_id, member])
+  )
+
+  renderRecentComments({
+    container: document.querySelector(
+      '#practiceRecentCommentsList'
+    ),
+    targetType: 'practice',
+    comments,
+    membersByUserId,
+    error,
+    getTargetLabel: (comment) => {
+      const log = logsById.get(comment.practice_log_id)
+
+      if (!log) {
+        return '삭제된 연습 기록'
+      }
+
+      const member = membersById.get(log.member_id)
+      return (
+        `${member?.display_name ?? '밴드원'} · ` +
+        `${formatLogDate(log.practiced_at)} · ${log.comment}`
+      )
+    },
+    onSelect: (logId) =>
+      showPracticeLogFromComment({
+        logId,
+        session,
+        members,
+        categories,
+        currentMember
+      })
+  })
+}
+
 function renderPracticeListControls(
   totalCount,
   session,
@@ -1285,6 +1475,7 @@ function renderFeed(
 
     const card = document.createElement('article')
     card.className = 'log-card'
+    card.id = `practice-log-${log.id}`
     card.style.borderLeftColor = category?.color ?? '#7f8c8d'
 
     const header = document.createElement('div')
@@ -1538,6 +1729,9 @@ function renderDashboard(session, dashboardData) {
     recentLogs,
     practiceComments,
     practiceTotalCount,
+    recentPracticeComments,
+    recentPracticeCommentLogs,
+    recentPracticeCommentsError,
     weekStart
   } = dashboardData
 
@@ -1697,6 +1891,20 @@ function renderDashboard(session, dashboardData) {
         </form>
         </section>
 
+        <section
+          class="recent-comments-section"
+          aria-labelledby="practiceRecentCommentsTitle"
+        >
+          <div class="recent-comments-heading">
+            <h2 id="practiceRecentCommentsTitle">최근 댓글</h2>
+            <span>최신 5개</span>
+          </div>
+          <div
+            id="practiceRecentCommentsList"
+            class="recent-comments-list"
+          ></div>
+        </section>
+
         <section id="practiceListSection" class="feed">
           <h2>최근 연습 기록</h2>
 
@@ -1822,6 +2030,15 @@ function renderDashboard(session, dashboardData) {
     currentMember,
     session
   )
+  renderRecentPracticeComments({
+    comments: recentPracticeComments,
+    logs: recentPracticeCommentLogs,
+    error: recentPracticeCommentsError,
+    members,
+    session,
+    categories,
+    currentMember
+  })
   renderPracticeListControls(
     practiceTotalCount,
     session,

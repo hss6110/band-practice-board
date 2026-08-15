@@ -4,7 +4,10 @@ import {
   createCommentsSection,
   getCommentDraftKey,
   groupCommentsByTarget,
-  loadComments
+  loadComments,
+  loadRecentComments,
+  renderRecentComments,
+  revealCommentTarget
 } from './comments.js'
 import {
   createIlikeFilterValue,
@@ -338,6 +341,7 @@ function createRecommendationCard(
   const card = document.createElement('article')
   card.className =
     `recommendation-card status-${recommendation.status}`
+  card.id = `recommendation-${recommendation.id}`
 
   const cardHeader = document.createElement('div')
   cardHeader.className = 'recommendation-card-header'
@@ -635,6 +639,145 @@ async function loadRecommendationListData() {
     comments: commentsResult.data,
     totalCount
   }
+}
+
+async function loadRecentRecommendationCommentsData() {
+  const commentsResult = await loadRecentComments(
+    'recommendation'
+  )
+
+  if (commentsResult.error) {
+    throw commentsResult.error
+  }
+
+  const recommendationIds = [
+    ...new Set(
+      commentsResult.data.map(
+        (comment) => comment.recommendation_id
+      )
+    )
+  ]
+
+  const recommendationsResult = recommendationIds.length > 0
+    ? await supabase
+        .from('song_recommendations')
+        .select('id, title, artist, created_at')
+        .in('id', recommendationIds)
+    : { data: [], error: null }
+
+  if (recommendationsResult.error) {
+    throw recommendationsResult.error
+  }
+
+  return {
+    comments: commentsResult.data,
+    recommendations: recommendationsResult.data ?? []
+  }
+}
+
+async function getRecommendationPage(recommendationId) {
+  const { data: recommendation, error } = await supabase
+    .from('song_recommendations')
+    .select('id, created_at')
+    .eq('id', recommendationId)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  if (!recommendation) {
+    return null
+  }
+
+  const { count, error: countError } = await supabase
+    .from('song_recommendations')
+    .select('id', { count: 'exact', head: true })
+    .gt('created_at', recommendation.created_at)
+
+  if (countError) {
+    throw countError
+  }
+
+  return Math.floor(
+    (count ?? 0) / RECOMMENDATIONS_PER_PAGE
+  ) + 1
+}
+
+async function showRecommendationFromComment(
+  recommendationId
+) {
+  try {
+    const targetPage = await getRecommendationPage(
+      recommendationId
+    )
+
+    if (!targetPage) {
+      window.alert('해당 추천곡을 찾을 수 없습니다.')
+      return
+    }
+
+    recommendationListSearch = ''
+    recommendationStatusFilter = 'all'
+    recommendationListPage = targetPage
+    await refreshSongRecommendations(true)
+
+    const target = document.getElementById(
+      `recommendation-${recommendationId}`
+    )
+
+    if (!revealCommentTarget(target)) {
+      window.alert('해당 추천곡을 찾을 수 없습니다.')
+    }
+  } catch (error) {
+    console.error(error)
+    window.alert(
+      `추천곡으로 이동하지 못했습니다: ${error.message}`
+    )
+  }
+}
+
+function renderRecentRecommendationComments({
+  comments,
+  recommendations,
+  error
+}) {
+  if (!boardState) {
+    return
+  }
+
+  const recommendationsByCommentTarget = new Map(
+    recommendations.map((recommendation) => [
+      recommendation.id,
+      recommendation
+    ])
+  )
+  const membersByUserId = new Map(
+    boardState.members
+      .filter((member) => member.user_id)
+      .map((member) => [member.user_id, member])
+  )
+
+  renderRecentComments({
+    container: document.querySelector(
+      '#recommendationRecentCommentsList'
+    ),
+    targetType: 'recommendation',
+    comments,
+    membersByUserId,
+    error,
+    getTargetLabel: (comment) => {
+      const recommendation =
+        recommendationsByCommentTarget.get(
+          comment.recommendation_id
+        )
+
+      return recommendation
+        ? `${recommendation.title} · ${recommendation.artist}`
+        : '삭제된 추천곡'
+    },
+    onSelect: showRecommendationFromComment
+  })
 }
 
 function renderRecommendationListControls(totalCount) {
@@ -940,6 +1083,24 @@ export function mountSongRecommendations({
     </section>
 
     <section
+      class="recent-comments-section"
+      aria-labelledby="recommendationRecentCommentsTitle"
+    >
+      <div class="recent-comments-heading">
+        <h2 id="recommendationRecentCommentsTitle">최근 댓글</h2>
+        <span>최신 5개</span>
+      </div>
+      <div
+        id="recommendationRecentCommentsList"
+        class="recent-comments-list"
+      >
+        <p class="recent-comments-empty">
+          최근 댓글을 불러오고 있습니다.
+        </p>
+      </div>
+    </section>
+
+    <section
       id="recommendationListSection"
       class="recommendation-list-section"
     >
@@ -1078,9 +1239,20 @@ export async function refreshSongRecommendations(
 
   const requestId = ++recommendationListRequestId
   let listData
+  let recentCommentsData
 
   try {
-    listData = await loadRecommendationListData()
+    [listData, recentCommentsData] = await Promise.all([
+      loadRecommendationListData(),
+      loadRecentRecommendationCommentsData().catch((error) => {
+        console.error('최근 추천곡 댓글 조회 실패:', error)
+        return {
+          comments: [],
+          recommendations: [],
+          error
+        }
+      })
+    ])
   } catch (error) {
     console.error(error)
 
@@ -1134,6 +1306,7 @@ export async function refreshSongRecommendations(
     listData.votes,
     listData.comments
   )
+  renderRecentRecommendationComments(recentCommentsData)
   renderRecommendationListControls(listData.totalCount)
 }
 
