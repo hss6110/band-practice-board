@@ -335,7 +335,7 @@ function createMetronome(container) {
     const isAccent = beat === 0
     const peakVolume = Math.max(
       0.0001,
-      volume * (isAccent ? 0.22 : 0.15)
+      volume * (isAccent ? 2.56 : 2.47)
     )
 
     oscillator.type = 'triangle'
